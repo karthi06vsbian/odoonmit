@@ -44,3 +44,10 @@ yarn-error.log*
 .vscode/
 *.swp
 *.swo
+
+# Project files
+*.zip
+server/dayflow.sqlite
+client/package-lock.json
+server/package-lock.json
+
