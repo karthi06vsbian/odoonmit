@@ -6,8 +6,8 @@ import { toast } from 'react-toastify';
 import { LogIn, Key, Mail, ShieldAlert } from 'lucide-react';
 
 export const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('hr@dayflow.com');
+  const [password, setPassword] = useState('Password@123');
   const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState('');
   const [showOtpVerification, setShowOtpVerification] = useState(false);
