@@ -9,16 +9,12 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
   },
   user_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    },
-    onDelete: 'CASCADE'
+    allowNull: false
   },
   leave_type: {
     type: DataTypes.ENUM('Paid', 'Sick', 'Unpaid'),
-    allowNull: false
+    allowNull: false,
+    defaultValue: 'Paid'
   },
   start_date: {
     type: DataTypes.DATEONLY,
@@ -28,27 +24,30 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
     type: DataTypes.DATEONLY,
     allowNull: false
   },
-  remarks: {
+  days_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 1
+  },
+  reason: {
     type: DataTypes.TEXT,
     allowNull: true
   },
   status: {
     type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
-    allowNull: false,
-    defaultValue: 'Pending'
+    defaultValue: 'Pending',
+    allowNull: false
   },
   admin_comment: {
-    type: DataTypes.TEXT,
+    type: DataTypes.STRING,
     allowNull: true
   },
-  applied_at: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
+  approved_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   }
 }, {
-  tableName: 'leave_requests',
-  timestamps: false
+  timestamps: true,
+  tableName: 'LeaveRequests'
 });
 
 module.exports = LeaveRequest;

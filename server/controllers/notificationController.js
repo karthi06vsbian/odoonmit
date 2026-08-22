@@ -5,51 +5,40 @@ exports.getMyNotifications = async (req, res) => {
     const userId = req.user.id;
     const notifications = await Notification.findAll({
       where: { user_id: userId },
-      order: [['created_at', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: 20
     });
 
-    return res.status(200).json(notifications);
+    const unreadCount = await Notification.count({
+      where: { user_id: userId, is_read: false }
+    });
+
+    return res.status(200).json({ notifications, unreadCount });
   } catch (error) {
-    console.error('Get my notifications error:', error);
+    console.error('Get notifications error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
 exports.markAsRead = async (req, res) => {
   try {
-    const { id } = req.params;
     const userId = req.user.id;
+    const { id } = req.params;
 
-    const notification = await Notification.findOne({
-      where: { id, user_id: userId }
-    });
-
-    if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
+    if (id === 'all') {
+      await Notification.update({ is_read: true }, { where: { user_id: userId } });
+      return res.status(200).json({ message: 'All notifications marked as read' });
     }
 
-    notification.is_read = true;
-    await notification.save();
+    const notif = await Notification.findOne({ where: { id, user_id: userId } });
+    if (notif) {
+      notif.is_read = true;
+      await notif.save();
+    }
 
-    return res.status(200).json({ message: 'Notification marked as read', notification });
+    return res.status(200).json({ message: 'Notification marked as read' });
   } catch (error) {
-    console.error('Mark notification as read error:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
-  }
-};
-
-exports.markAllAsRead = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    await Notification.update(
-      { is_read: true },
-      { where: { user_id: userId, is_read: false } }
-    );
-
-    return res.status(200).json({ message: 'All notifications marked as read' });
-  } catch (error) {
-    console.error('Mark all notifications as read error:', error);
+    console.error('Mark read error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

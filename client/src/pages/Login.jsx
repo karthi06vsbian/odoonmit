@@ -19,7 +19,7 @@ export const Login = () => {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
-      return toast.error('Please enter your Email/Employee ID and password');
+      return toast.error('Please enter your Email or Employee ID and password');
     }
 
     setLoading(true);
@@ -27,7 +27,7 @@ export const Login = () => {
       const res = await api.post('/auth/login', { email, password });
       const { accessToken, refreshToken, user } = res.data;
       login(user, accessToken, refreshToken);
-      toast.success('Welcome back to Dayflow!');
+      toast.success(`Welcome back, ${user.name}!`);
       navigate('/');
     } catch (error) {
       console.error(error);
@@ -44,7 +44,6 @@ export const Login = () => {
     }
   };
 
-
   const handleOtpVerifySubmit = async (e) => {
     e.preventDefault();
     if (!otp) return toast.error('Please enter the OTP verification code');
@@ -52,7 +51,7 @@ export const Login = () => {
     setLoading(true);
     try {
       await api.post('/auth/verify-email', { email: verificationEmail, otp });
-      toast.success('Email verified successfully! You can now log in.');
+      toast.success('Email verified successfully! You can now sign in.');
       setShowOtpVerification(false);
       setOtp('');
     } catch (error) {
@@ -64,7 +63,7 @@ export const Login = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 relative overflow-hidden">
-      {/* Decorative background glows */}
+      {/* Decorative background ambient glows */}
       <div className="absolute top-1/4 left-1/4 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl"></div>
       <div className="absolute bottom-1/4 right-1/4 h-72 w-72 rounded-full bg-emerald-500/5 blur-3xl"></div>
 
@@ -130,7 +129,6 @@ export const Login = () => {
               )}
             </button>
 
-
             <div className="text-center mt-4">
               <span className="text-xs text-slate-400">
                 Don't have an account?{' '}
@@ -147,8 +145,7 @@ export const Login = () => {
               <div className="flex items-start">
                 <ShieldAlert className="h-5 w-5 text-blue-400 shrink-0 mr-3 mt-0.5" />
                 <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                  We've sent a 6-digit OTP verification code to <span className="text-white font-bold">{verificationEmail}</span>. 
-                  Please check your inbox (or backend server logs) to verify.
+                  We've sent a 6-digit OTP verification code to <span className="text-white font-bold">{verificationEmail}</span>.
                 </p>
               </div>
             </div>
@@ -178,14 +175,6 @@ export const Login = () => {
               ) : (
                 'Verify & Activate'
               )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowOtpVerification(false)}
-              className="w-full text-center text-xs font-semibold text-slate-400 hover:text-slate-300 mt-2 block"
-            >
-              Back to Login
             </button>
           </form>
         )}

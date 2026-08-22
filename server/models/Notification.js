@@ -9,33 +9,27 @@ const Notification = sequelize.define('Notification', {
   },
   user_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    },
-    onDelete: 'CASCADE'
+    allowNull: false
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false
   },
   message: {
     type: DataTypes.TEXT,
     allowNull: false
   },
   type: {
-    type: DataTypes.STRING(100),
-    allowNull: false
+    type: DataTypes.ENUM('attendance', 'leave', 'payroll', 'system'),
+    defaultValue: 'system'
   },
   is_read: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
-  },
-  created_at: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
   }
 }, {
-  tableName: 'notifications',
-  timestamps: false
+  timestamps: true,
+  tableName: 'Notifications'
 });
 
 module.exports = Notification;

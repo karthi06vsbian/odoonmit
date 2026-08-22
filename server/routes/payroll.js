@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const payrollController = require('../controllers/payrollController');
-const { verifyToken, isAdmin } = require('../middleware/auth');
+const { verifyToken, isHR } = require('../middleware/auth');
 
-router.get('/my-payroll', verifyToken, payrollController.getMyPayroll);
-router.get('/all', verifyToken, isAdmin, payrollController.getAllPayroll);
-router.post('/update', verifyToken, isAdmin, payrollController.updatePayroll);
-router.get('/download/:id', verifyToken, payrollController.downloadPayslip);
+router.get('/my-slips', verifyToken, payrollController.getMyPayroll);
+router.get('/all', verifyToken, isHR, payrollController.getAllPayroll);
+router.post('/structure', verifyToken, isHR, payrollController.updateSalaryStructure);
+router.get('/payslip/:id/pdf', verifyToken, payrollController.downloadPayslipPDF);
 
 module.exports = router;

@@ -3,53 +3,40 @@ require('dotenv').config();
 
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  if (!authHeader) {
-    return res.status(401).json({ message: 'Access Denied: No token provided' });
-  }
+  const token = authHeader && authHeader.split(' ')[1];
 
-  const token = authHeader.split(' ')[1];
   if (!token) {
-    return res.status(401).json({ message: 'Access Denied: Invalid token format' });
+    return res.status(401).json({ message: 'Access Denied: No token provided.' });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    const verified = jwt.verify(token, process.env.JWT_SECRET || 'dayflow_hrms_super_secret_jwt_key_2026');
+    req.user = verified;
     next();
   } catch (error) {
-    return res.status(403).json({ message: 'Invalid or expired access token' });
+    return res.status(403).json({ message: 'Session expired or invalid token. Please log in again.' });
   }
 };
 
-const isAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== 'HR') {
-    return res.status(403).json({ message: 'Access Denied: HR/Admin privileges required' });
-  }
-  next();
-};
-
-const isEmployee = (req, res, next) => {
-  if (!req.user || req.user.role !== 'Employee') {
-    return res.status(403).json({ message: 'Access Denied: Employee privileges required' });
-  }
-  next();
-};
-
-const isHRorSelf = (req, res, next) => {
-  const requestedUserId = parseInt(req.params.userId || req.params.id);
-  if (!req.user) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  if (req.user.role === 'HR' || req.user.id === requestedUserId) {
+const isHR = (req, res, next) => {
+  if (req.user && (req.user.role === 'HR' || req.user.role === 'Admin')) {
     next();
   } else {
-    return res.status(403).json({ message: 'Access Denied: You cannot perform this action for other users' });
+    return res.status(403).json({ message: 'Forbidden: HR Admin privileges required.' });
+  }
+};
+
+const isSelfOrHR = (req, res, next) => {
+  const requestedUserId = parseInt(req.params.id, 10);
+  if (req.user && (req.user.role === 'HR' || req.user.role === 'Admin' || req.user.id === requestedUserId)) {
+    next();
+  } else {
+    return res.status(403).json({ message: 'Forbidden: You cannot access other users records.' });
   }
 };
 
 module.exports = {
   verifyToken,
-  isAdmin,
-  isEmployee,
-  isHRorSelf
+  isHR,
+  isSelfOrHR
 };

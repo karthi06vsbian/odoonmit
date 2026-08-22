@@ -1,9 +1,52 @@
+const { Op } = require('sequelize');
 const { User, JobDetails, Payroll } = require('../models');
 
-exports.getProfile = async (req, res) => {
+exports.getAllUsers = async (req, res) => {
   try {
-    const userId = req.params.id || req.user.id;
+    const { search, department, role } = req.query;
+    const where = {};
 
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { employee_id: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    if (role) {
+      where.role = role;
+    }
+
+    const jobWhere = {};
+    if (department) {
+      jobWhere.department = department;
+    }
+
+    const users = await User.findAll({
+      where,
+      attributes: { exclude: ['password_hash', 'otp'] },
+      include: [
+        {
+          model: JobDetails,
+          as: 'jobDetails',
+          where: Object.keys(jobWhere).length > 0 ? jobWhere : undefined,
+          required: false
+        }
+      ],
+      order: [['name', 'ASC']]
+    });
+
+    return res.status(200).json(users);
+  } catch (error) {
+    console.error('Get all users error:', error.message);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.getUserById = async (req, res) => {
+  try {
+    const userId = req.params.id;
     const user = await User.findByPk(userId, {
       attributes: { exclude: ['password_hash', 'otp'] },
       include: [
@@ -13,70 +56,58 @@ exports.getProfile = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'Employee not found' });
     }
 
     return res.status(200).json(user);
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error('Get user by id error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-exports.updateProfile = async (req, res) => {
+exports.updateUserProfile = async (req, res) => {
   try {
-    const userId = req.params.id || req.user.id;
-    const userToUpdate = await User.findByPk(userId, {
-      include: [{ model: JobDetails, as: 'jobDetails' }]
-    });
+    const userId = req.params.id;
+    const isHR = req.user.role === 'HR' || req.user.role === 'Admin';
+    const isSelf = req.user.id === parseInt(userId, 10);
 
-    if (!userToUpdate) {
+    if (!isHR && !isSelf) {
+      return res.status(403).json({ message: 'Forbidden: You cannot modify other user profiles' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const { name, email, role, phone, address, profile_pic, designation, department, joining_date, employment_type } = req.body;
+    const { name, email, phone, address, role, jobDetails } = req.body;
 
-    // Check permissions
-    const isSelf = req.user.id === userToUpdate.id;
-    const isHR = req.user.role === 'HR';
+    // Fields editable by self: phone, address
+    if (phone !== undefined) user.phone = phone;
+    if (address !== undefined) user.address = address;
 
-    if (!isHR && !isSelf) {
-      return res.status(403).json({ message: 'Access Denied: You cannot update this profile' });
-    }
-
+    // Fields editable only by HR
     if (isHR) {
-      // HR can edit all fields
-      if (name) userToUpdate.name = name;
-      if (email) userToUpdate.email = email;
-      if (role) userToUpdate.role = role;
-      if (phone !== undefined) userToUpdate.phone = phone;
-      if (address !== undefined) userToUpdate.address = address;
-      if (profile_pic !== undefined) userToUpdate.profile_pic = profile_pic;
+      if (name) user.name = name;
+      if (email) user.email = email;
+      if (role) user.role = role;
 
-      await userToUpdate.save();
-
-      // HR can also edit job details
-      let jobDetails = userToUpdate.jobDetails;
-      if (!jobDetails) {
-        jobDetails = await JobDetails.create({ user_id: userToUpdate.id });
+      if (jobDetails) {
+        let job = await JobDetails.findOne({ where: { user_id: user.id } });
+        if (!job) {
+          job = await JobDetails.create({ user_id: user.id });
+        }
+        if (jobDetails.designation) job.designation = jobDetails.designation;
+        if (jobDetails.department) job.department = jobDetails.department;
+        if (jobDetails.joining_date) job.joining_date = jobDetails.joining_date;
+        if (jobDetails.employment_type) job.employment_type = jobDetails.employment_type;
+        await job.save();
       }
-
-      if (designation) jobDetails.designation = designation;
-      if (department) jobDetails.department = department;
-      if (joining_date) jobDetails.joining_date = joining_date;
-      if (employment_type) jobDetails.employment_type = employment_type;
-
-      await jobDetails.save();
-    } else {
-      // Employee can ONLY edit phone, address, and profile_pic
-      if (phone !== undefined) userToUpdate.phone = phone;
-      if (address !== undefined) userToUpdate.address = address;
-      if (profile_pic !== undefined) userToUpdate.profile_pic = profile_pic;
-
-      await userToUpdate.save();
     }
 
-    // Return updated user profile
+    await user.save();
+
     const updatedUser = await User.findByPk(userId, {
       attributes: { exclude: ['password_hash', 'otp'] },
       include: [
@@ -90,21 +121,39 @@ exports.updateProfile = async (req, res) => {
       user: updatedUser
     });
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error('Update profile error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-exports.getAllUsers = async (req, res) => {
+exports.uploadAvatar = async (req, res) => {
   try {
-    const users = await User.findAll({
-      attributes: { exclude: ['password_hash', 'otp'] },
-      include: [{ model: JobDetails, as: 'jobDetails' }]
-    });
+    const userId = req.params.id;
+    const isHR = req.user.role === 'HR' || req.user.role === 'Admin';
+    const isSelf = req.user.id === parseInt(userId, 10);
 
-    return res.status(200).json(users);
+    if (!isHR && !isSelf) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Please upload an image file' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.profile_pic = req.file.path;
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Profile picture uploaded successfully',
+      profile_pic: user.profile_pic
+    });
   } catch (error) {
-    console.error('Get all users error:', error);
+    console.error('Avatar upload error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

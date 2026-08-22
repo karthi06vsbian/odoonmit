@@ -2,407 +2,391 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { toast } from 'react-toastify';
-import { CreditCard, FileDown, PlusCircle, Search, User } from 'lucide-react';
+import { 
+  DollarSign, 
+  Download, 
+  FileText, 
+  TrendingUp, 
+  CreditCard, 
+  Edit3, 
+  Check, 
+  X,
+  Users
+} from 'lucide-react';
 
 export const Payroll = () => {
-  const { user } = useAuth();
-  const isHR = user?.role === 'HR';
+  const { user, isHR } = useAuth();
 
-  // State for Employee view
   const [mySlips, setMySlips] = useState([]);
-  const [loadingMy, setLoadingMy] = useState(true);
-
-  // State for HR view
   const [allSlips, setAllSlips] = useState([]);
-  const [loadingAll, setLoadingAll] = useState(true);
   const [employees, setEmployees] = useState([]);
-  const [hrSearchQuery, setHrSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // Form state for creating/updating payroll
-  const [formData, setFormData] = useState({
+  // Edit/Update Salary Structure Modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({
     user_id: '',
     basic_salary: '',
     allowances: '',
     deductions: '',
-    month: new Date().getMonth() + 1, // Current month (1-12)
-    year: new Date().getFullYear()
+    payment_status: 'Paid'
   });
-  const [submitting, setSubmitting] = useState(false);
-
-  const fetchEmployeeData = async () => {
-    try {
-      const res = await api.get('/users');
-      // Filter out HR users if desired, or keep all
-      setEmployees(res.data.filter(u => u.role === 'Employee'));
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const fetchPayrollData = async () => {
-    try {
-      if (isHR) {
-        setLoadingAll(true);
-        const resAll = await api.get('/payroll/all');
-        setAllSlips(resAll.data);
-      }
-      
-      setLoadingMy(true);
-      const resMy = await api.get('/payroll/my-payroll');
-      setMySlips(resMy.data);
-    } catch (error) {
-      toast.error('Failed to retrieve payroll history');
-    } finally {
-      setLoadingMy(false);
-      setLoadingAll(false);
-    }
-  };
+  const [savingSalary, setSavingSalary] = useState(false);
 
   useEffect(() => {
     fetchPayrollData();
-    if (isHR) {
-      fetchEmployeeData();
-    }
-  }, []);
+  }, [isHR]);
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const fetchPayrollData = async () => {
+    setLoading(true);
+    try {
+      if (isHR) {
+        const [allRes, usersRes] = await Promise.all([
+          api.get('/payroll/all'),
+          api.get('/users')
+        ]);
+        setAllSlips(allRes.data || []);
+        setEmployees(usersRes.data || []);
+      }
+      const myRes = await api.get('/payroll/my-slips');
+      setMySlips(myRes.data || []);
+    } catch (error) {
+      console.error('Error fetching payroll:', error);
+      toast.error('Failed to load payroll records');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handlePayrollSubmit = async (e) => {
-    e.preventDefault();
-    const { user_id, basic_salary, allowances, deductions, month, year } = formData;
+  const handleDownloadPDF = async (slipId, empId, month, year) => {
+    try {
+      const response = await api.get(`/payroll/payslip/${slipId}/pdf`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Payslip_${empId || 'Employee'}_${month}_${year}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      toast.success('Payslip downloaded successfully!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error downloading payslip PDF');
+    }
+  };
 
-    if (!user_id || basic_salary === '' || allowances === '' || deductions === '') {
-      return toast.error('All fields are required');
+  const handleSalaryUpdateSubmit = async (e) => {
+    e.preventDefault();
+    if (!editFormData.user_id || !editFormData.basic_salary) {
+      return toast.error('Please select an employee and specify the basic salary');
     }
 
-    setSubmitting(true);
+    setSavingSalary(true);
     try {
-      const res = await api.post('/payroll/update', {
-        user_id: parseInt(user_id),
-        basic_salary: parseFloat(basic_salary),
-        allowances: parseFloat(allowances),
-        deductions: parseFloat(deductions),
-        month: parseInt(month),
-        year: parseInt(year)
-      });
-      toast.success(res.data.message);
-      
-      // Reset form (except month/year) and reload lists
-      setFormData(prev => ({
-        ...prev,
-        user_id: '',
-        basic_salary: '',
-        allowances: '',
-        deductions: ''
-      }));
+      const res = await api.post('/payroll/structure', editFormData);
+      toast.success(res.data.message || 'Salary structure saved!');
+      setShowEditModal(false);
       fetchPayrollData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update payroll structure');
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Failed to update salary structure');
     } finally {
-      setSubmitting(false);
+      setSavingSalary(false);
     }
   };
 
-  const handleDownloadPayslip = async (slipId) => {
-    try {
-      // Fetch token to append since raw window.open doesn't include Auth Headers
-      const token = localStorage.getItem('accessToken');
-      const downloadUrl = `http://localhost:5001/api/payroll/download/${slipId}?token=${token}`;
-      
-      // Instead of raw window.open, we can fetch via axios to get blob or open with token in URL query
-      // Our backend middleware parses token from query if headers is missing
-      window.open(downloadUrl, '_blank');
-    } catch (error) {
-      toast.error('Failed to download payslip PDF');
-    }
-  };
-
-  const getMonthName = (monthNum) => {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[monthNum - 1] || monthNum;
-  };
-
-  // Live Net Salary calculation
-  const calculateNetSalary = () => {
-    const basic = parseFloat(formData.basic_salary) || 0;
-    const allow = parseFloat(formData.allowances) || 0;
-    const deduct = parseFloat(formData.deductions) || 0;
-    return (basic + allow - deduct).toFixed(2);
-  };
-
-  const filteredSlips = allSlips.filter(s => 
-    s.user?.name?.toLowerCase().includes(hrSearchQuery.toLowerCase()) ||
-    s.user?.employee_id?.toLowerCase().includes(hrSearchQuery.toLowerCase())
-  );
+  const latestSlip = mySlips[0] || null;
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h2 className="text-xl font-bold text-white tracking-wide">Payroll & Salary Slips</h2>
-        <p className="text-xs text-slate-400 font-medium">Verify salary structures and download monthly payslips.</p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center">
+            <DollarSign className="mr-2.5 h-6 w-6 text-amber-500" />
+            Payroll & Salary Slips
+          </h2>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+            Transparent salary structures, itemized pay calculations, and downloadable payslips.
+          </p>
+        </div>
+
+        {isHR && (
+          <button
+            onClick={() => {
+              setEditFormData({
+                user_id: employees[0]?.id || '',
+                basic_salary: 5000,
+                allowances: 500,
+                deductions: 200,
+                payment_status: 'Paid'
+              });
+              setShowEditModal(true);
+            }}
+            className="flex items-center justify-center rounded-lg bg-amber-600 hover:bg-amber-500 px-4 py-2 text-xs font-bold text-white shadow-lg transition-all"
+          >
+            <Edit3 className="mr-1.5 h-4 w-4" />
+            Update Salary Structure
+          </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left Column: HR Update Form (if HR) */}
-        {isHR && (
-          <div className="lg:col-span-1 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg h-fit">
-            <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center">
-              <PlusCircle className="mr-2 h-4.5 w-4.5" />
-              Adjust Salary Structure
-            </h3>
+      {/* Salary Structure Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white">Configure Staff Salary</h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-            <form onSubmit={handlePayrollSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleSalaryUpdateSubmit} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                   Select Employee
                 </label>
                 <select
-                  name="user_id"
-                  value={formData.user_id}
-                  onChange={handleInputChange}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white focus:outline-none focus:border-blue-500"
-                  required
+                  value={editFormData.user_id}
+                  onChange={(e) => setEditFormData({ ...editFormData, user_id: e.target.value })}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
                 >
-                  <option value="">-- Choose Employee --</option>
-                  {employees.map(emp => (
+                  {employees.map((emp) => (
                     <option key={emp.id} value={emp.id} className="bg-slate-900">
-                      {emp.name} ({emp.employee_id})
+                      {emp.name} ({emp.employee_id} - {emp.jobDetails?.department || 'General'})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Pay Month
-                  </label>
-                  <select
-                    name="month"
-                    value={formData.month}
-                    onChange={handleInputChange}
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white focus:outline-none"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1} className="bg-slate-900">
-                        {getMonthName(i + 1)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Pay Year
-                  </label>
-                  <select
-                    name="year"
-                    value={formData.year}
-                    onChange={handleInputChange}
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white focus:outline-none"
-                  >
-                    <option value={2026} className="bg-slate-900">2026</option>
-                    <option value={2025} className="bg-slate-900">2025</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                   Basic Salary ($)
                 </label>
                 <input
                   type="number"
-                  name="basic_salary"
-                  value={formData.basic_salary}
-                  onChange={handleInputChange}
-                  placeholder="5000"
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white"
+                  step="0.01"
+                  value={editFormData.basic_salary}
+                  onChange={(e) => setEditFormData({ ...editFormData, basic_salary: e.target.value })}
+                  placeholder="5000.00"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                     Allowances ($)
                   </label>
                   <input
                     type="number"
-                    name="allowances"
-                    value={formData.allowances}
-                    onChange={handleInputChange}
-                    placeholder="1000"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white"
-                    required
+                    step="0.01"
+                    value={editFormData.allowances}
+                    onChange={(e) => setEditFormData({ ...editFormData, allowances: e.target.value })}
+                    placeholder="500.00"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                     Deductions ($)
                   </label>
                   <input
                     type="number"
-                    name="deductions"
-                    value={formData.deductions}
-                    onChange={handleInputChange}
-                    placeholder="200"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white"
-                    required
+                    step="0.01"
+                    value={editFormData.deductions}
+                    onChange={(e) => setEditFormData({ ...editFormData, deductions: e.target.value })}
+                    placeholder="200.00"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* Calculated Salary Field */}
-              <div className="rounded-lg bg-blue-600/10 border border-blue-500/20 p-3 flex justify-between items-center">
-                <span className="font-semibold text-blue-400">Net Salary:</span>
-                <span className="text-base font-bold text-white">${calculateNetSalary()}</span>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Status
+                </label>
+                <select
+                  value={editFormData.payment_status}
+                  onChange={(e) => setEditFormData({ ...editFormData, payment_status: e.target.value })}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="Paid">Paid</option>
+                  <option value="Pending">Pending</option>
+                </select>
               </div>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 shadow-lg transition-colors"
-              >
-                {submitting ? 'Updating...' : 'Save & Publish Slip'}
-              </button>
+              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="rounded-lg border border-slate-700 py-2 px-4 text-xs font-semibold text-slate-400 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSalary}
+                  className="rounded-lg bg-amber-600 py-2 px-4 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-50"
+                >
+                  {savingSalary ? 'Saving...' : 'Save Structure'}
+                </button>
+              </div>
             </form>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Right Column: List of Payslips */}
-        <div className={isHR ? 'lg:col-span-2 space-y-6' : 'lg:col-span-3 space-y-6'}>
-          
-          {/* HR View: All staff salary slips list */}
-          {isHR && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-800 mb-6 gap-4">
-                <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center">
-                  <User className="mr-2 h-4.5 w-4.5" />
-                  Staff Payroll Log
-                </h3>
-
-                <div className="relative text-xs">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder="Search by Employee..."
-                    value={hrSearchQuery}
-                    onChange={(e) => setHrSearchQuery(e.target.value)}
-                    className="rounded border border-slate-800 bg-slate-950/40 py-1.5 pl-8 pr-3 text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto text-xs">
-                {loadingAll ? (
-                  <div className="flex justify-center items-center py-12">
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
-                        <th className="py-2.5">Emp ID</th>
-                        <th className="py-2.5">Name</th>
-                        <th className="py-2.5">Period</th>
-                        <th className="py-2.5">Net Salary</th>
-                        <th className="py-2.5 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/40 text-slate-300">
-                      {filteredSlips.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-slate-500">No payroll records logged yet.</td>
-                        </tr>
-                      ) : (
-                        filteredSlips.map((slip) => (
-                          <tr key={slip.id} className="hover:bg-slate-850/20">
-                            <td className="py-2.5 font-medium text-slate-400">{slip.user?.employee_id}</td>
-                            <td className="py-2.5 font-semibold text-slate-100">{slip.user?.name}</td>
-                            <td className="py-2.5">{getMonthName(slip.month)} {slip.year}</td>
-                            <td className="py-2.5 font-bold text-emerald-400">${parseFloat(slip.net_salary).toFixed(2)}</td>
-                            <td className="py-2.5 text-right">
-                              <button
-                                onClick={() => handleDownloadPayslip(slip.id)}
-                                className="inline-flex items-center text-blue-400 hover:text-blue-300 font-semibold"
-                              >
-                                <FileDown className="mr-1 h-3.5 w-3.5" />
-                                PDF
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Employee view: Personal payslips list */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-            <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center pb-3 border-b border-slate-800">
-              <CreditCard className="mr-2 h-4.5 w-4.5" />
-              My Salary Slips
-            </h3>
-
-            <div className="overflow-x-auto text-xs">
-              {loadingMy ? (
-                <div className="flex justify-center items-center py-12">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
-                </div>
-              ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
-                      <th className="py-2.5">Period</th>
-                      <th className="py-2.5">Basic Salary</th>
-                      <th className="py-2.5">Allowances</th>
-                      <th className="py-2.5">Deductions</th>
-                      <th className="py-2.5">Net Salary</th>
-                      <th className="py-2.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/40 text-slate-300">
-                    {mySlips.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-slate-500">No payslips issued yet.</td>
-                      </tr>
-                    ) : (
-                      mySlips.map((slip) => (
-                        <tr key={slip.id} className="hover:bg-slate-850/20">
-                          <td className="py-2.5 font-semibold text-slate-200">{getMonthName(slip.month)} {slip.year}</td>
-                          <td className="py-2.5">${parseFloat(slip.basic_salary).toFixed(2)}</td>
-                          <td className="py-2.5 text-emerald-400">+${parseFloat(slip.allowances).toFixed(2)}</td>
-                          <td className="py-2.5 text-rose-400">-${parseFloat(slip.deductions).toFixed(2)}</td>
-                          <td className="py-2.5 font-bold text-white">${parseFloat(slip.net_salary).toFixed(2)}</td>
-                          <td className="py-2.5 text-right">
-                            <button
-                              onClick={() => handleDownloadPayslip(slip.id)}
-                              className="inline-flex items-center text-blue-400 hover:text-blue-300 font-semibold bg-blue-600/10 hover:bg-blue-600/20 px-2 py-1 rounded transition-colors"
-                            >
-                              <FileDown className="mr-1 h-3.5 w-3.5" />
-                              Download PDF
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
+      {/* Salary Overview Card */}
+      {latestSlip && (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg">
+            <span className="text-xxs font-bold text-slate-400 uppercase tracking-wider">Basic Salary</span>
+            <p className="mt-2 text-xl font-bold text-white">${parseFloat(latestSlip.basic_salary).toFixed(2)}</p>
           </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg">
+            <span className="text-xxs font-bold text-emerald-400 uppercase tracking-wider">Allowances</span>
+            <p className="mt-2 text-xl font-bold text-emerald-400">+${parseFloat(latestSlip.allowances).toFixed(2)}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg">
+            <span className="text-xxs font-bold text-rose-400 uppercase tracking-wider">Deductions</span>
+            <p className="mt-2 text-xl font-bold text-rose-400">-${parseFloat(latestSlip.deductions).toFixed(2)}</p>
+          </div>
+          <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-5 shadow-lg">
+            <span className="text-xxs font-bold text-blue-400 uppercase tracking-wider">Net Payable</span>
+            <p className="mt-2 text-2xl font-black text-white">${parseFloat(latestSlip.net_salary).toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
+      {/* HR All-Workforce Payroll Control Table */}
+      {isHR && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+            <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center">
+              <Users className="mr-2 h-4 w-4" />
+              Company Payroll Registry (HR Master View)
+            </h3>
+            <span className="text-xxs text-slate-500">{allSlips.length} Total Records</span>
+          </div>
+
+          <div className="overflow-x-auto text-xs font-normal">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <th className="py-2.5">Staff Name</th>
+                  <th className="py-2.5">Month/Year</th>
+                  <th className="py-2.5">Basic</th>
+                  <th className="py-2.5">Allowances</th>
+                  <th className="py-2.5">Deductions</th>
+                  <th className="py-2.5">Net Pay</th>
+                  <th className="py-2.5">Status</th>
+                  <th className="py-2.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40 text-slate-300">
+                {allSlips.map((slip) => (
+                  <tr key={slip.id} className="hover:bg-slate-850/20">
+                    <td className="py-3">
+                      <p className="font-semibold text-white">{slip.user?.name || 'Staff'}</p>
+                      <p className="text-xxs text-slate-500">{slip.user?.employee_id}</p>
+                    </td>
+                    <td className="py-3 font-mono">{slip.month}/{slip.year}</td>
+                    <td className="py-3">${parseFloat(slip.basic_salary).toFixed(2)}</td>
+                    <td className="py-3 text-emerald-400">+${parseFloat(slip.allowances).toFixed(2)}</td>
+                    <td className="py-3 text-rose-400">-${parseFloat(slip.deductions).toFixed(2)}</td>
+                    <td className="py-3 font-bold text-white">${parseFloat(slip.net_salary).toFixed(2)}</td>
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 rounded text-xxs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {slip.payment_status}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right">
+                      <button
+                        onClick={() => handleDownloadPDF(slip.id, slip.user?.employee_id, slip.month, slip.year)}
+                        className="inline-flex items-center space-x-1 rounded bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-xxs font-semibold text-blue-400 transition-colors"
+                      >
+                        <Download className="h-3 w-3" />
+                        <span>PDF</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Personal Payslip History */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center">
+            <FileText className="mr-2 h-4 w-4 text-blue-400" />
+            My Monthly Payslips
+          </h3>
+          <span className="text-xxs text-slate-500">Official Slips</span>
+        </div>
+
+        <div className="overflow-x-auto text-xs font-normal">
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
+            </div>
+          ) : (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <th className="py-2.5">Period</th>
+                  <th className="py-2.5">Basic Salary</th>
+                  <th className="py-2.5">Allowances</th>
+                  <th className="py-2.5">Deductions</th>
+                  <th className="py-2.5">Net Salary</th>
+                  <th className="py-2.5">Status</th>
+                  <th className="py-2.5 text-right">Download Payslip</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40 text-slate-300">
+                {mySlips.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-slate-500">No payslip records found.</td>
+                  </tr>
+                ) : (
+                  mySlips.map((slip) => (
+                    <tr key={slip.id} className="hover:bg-slate-850/20">
+                      <td className="py-3 font-semibold text-slate-100">Month {slip.month}, {slip.year}</td>
+                      <td className="py-3 font-mono">${parseFloat(slip.basic_salary).toFixed(2)}</td>
+                      <td className="py-3 text-emerald-400 font-mono">+${parseFloat(slip.allowances).toFixed(2)}</td>
+                      <td className="py-3 text-rose-400 font-mono">-${parseFloat(slip.deductions).toFixed(2)}</td>
+                      <td className="py-3 font-bold text-white font-mono">${parseFloat(slip.net_salary).toFixed(2)}</td>
+                      <td className="py-3">
+                        <span className="px-2 py-0.5 rounded text-xxs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          {slip.payment_status}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => handleDownloadPDF(slip.id, user?.employee_id, slip.month, slip.year)}
+                          className="inline-flex items-center space-x-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xxs font-bold text-white shadow transition-all"
+                        >
+                          <Download className="h-3 w-3" />
+                          <span>PDF Payslip</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

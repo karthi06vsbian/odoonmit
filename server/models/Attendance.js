@@ -9,12 +9,7 @@ const Attendance = sequelize.define('Attendance', {
   },
   user_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    },
-    onDelete: 'CASCADE'
+    allowNull: false
   },
   date: {
     type: DataTypes.DATEONLY,
@@ -28,14 +23,21 @@ const Attendance = sequelize.define('Attendance', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  total_hours: {
+    type: DataTypes.DECIMAL(5, 2),
+    defaultValue: 0.00
+  },
   status: {
     type: DataTypes.ENUM('Present', 'Absent', 'Half-day', 'Leave'),
-    allowNull: false,
-    defaultValue: 'Absent'
+    defaultValue: 'Present'
+  },
+  notes: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 }, {
-  tableName: 'attendance',
-  timestamps: false
+  timestamps: true,
+  tableName: 'Attendances'
 });
 
 module.exports = Attendance;

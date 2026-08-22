@@ -15,7 +15,7 @@ const payrollRoutes = require('./routes/payroll');
 const notificationRoutes = require('./routes/notification');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Global Middleware
 app.use(cors());
@@ -33,11 +33,11 @@ const initDB = async () => {
     dbInitialized = true;
     console.log('Database initialized and synced successfully.');
   } catch (error) {
-    console.error('Database initialization error:', error);
+    console.error('Database initialization error:', error.message);
   }
 };
 
-// Start initialization on module load
+// Start initialization immediately
 initDB().catch(console.error);
 
 // Middleware to ensure DB connection is ready before handling ANY request
@@ -56,6 +56,11 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leave', leaveRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/notifications', notificationRoutes);
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Dayflow HRMS API is online and healthy.' });
+});
 
 // Serve static files from the React client build
 app.use(express.static(path.join(__dirname, '../client/dist')));

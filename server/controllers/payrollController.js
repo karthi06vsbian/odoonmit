@@ -1,217 +1,207 @@
 const PDFDocument = require('pdfkit');
-const { Payroll, User, JobDetails, Notification } = require('../models');
+const { Payroll, User, JobDetails } = require('../models');
 
 exports.getMyPayroll = async (req, res) => {
   try {
     const userId = req.user.id;
-    const records = await Payroll.findAll({
+    const slips = await Payroll.findAll({
       where: { user_id: userId },
       order: [['year', 'DESC'], ['month', 'DESC']]
     });
 
-    return res.status(200).json(records);
+    return res.status(200).json(slips);
   } catch (error) {
-    console.error('Get my payroll error:', error);
+    console.error('Get my payroll error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
 exports.getAllPayroll = async (req, res) => {
   try {
-    const records = await Payroll.findAll({
+    const { month, year, search } = req.query;
+    const where = {};
+
+    if (month) where.month = month;
+    if (year) where.year = year;
+
+    const payrolls = await Payroll.findAll({
+      where,
       include: [
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'name', 'employee_id', 'email'],
+          attributes: ['id', 'name', 'employee_id', 'email', 'profile_pic'],
           include: [{ model: JobDetails, as: 'jobDetails', attributes: ['designation', 'department'] }]
         }
       ],
       order: [['year', 'DESC'], ['month', 'DESC']]
     });
 
-    return res.status(200).json(records);
+    return res.status(200).json(payrolls);
   } catch (error) {
-    console.error('Get all payroll error:', error);
+    console.error('Get all payroll error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-exports.updatePayroll = async (req, res) => {
+exports.updateSalaryStructure = async (req, res) => {
   try {
-    const { user_id, basic_salary, allowances, deductions, month, year } = req.body;
+    const { user_id, month, year, basic_salary, allowances, deductions, payment_status } = req.body;
 
-    if (!user_id || basic_salary === undefined || allowances === undefined || deductions === undefined || !month || !year) {
-      return res.status(400).json({ message: 'All fields (user_id, basic_salary, allowances, deductions, month, year) are required' });
+    if (!user_id || basic_salary === undefined) {
+      return res.status(400).json({ message: 'User ID and Basic Salary are required' });
     }
 
-    const user = await User.findByPk(user_id);
-    if (!user) {
-      return res.status(404).json({ message: 'Employee user not found' });
-    }
+    const basic = parseFloat(basic_salary) || 0;
+    const allow = parseFloat(allowances) || 0;
+    const deduct = parseFloat(deductions) || 0;
+    const net = basic + allow - deduct;
 
-    const net_salary = parseFloat(basic_salary) + parseFloat(allowances) - parseFloat(deductions);
+    const currentMonth = month || (new Date().getMonth() + 1);
+    const currentYear = year || new Date().getFullYear();
 
-    // Find if a record already exists for this employee for this month/year
-    let record = await Payroll.findOne({
-      where: { user_id, month, year }
+    let payroll = await Payroll.findOne({
+      where: { user_id, month: currentMonth, year: currentYear }
     });
 
-    if (record) {
-      record.basic_salary = basic_salary;
-      record.allowances = allowances;
-      record.deductions = deductions;
-      record.net_salary = net_salary;
-      await record.save();
+    if (payroll) {
+      payroll.basic_salary = basic;
+      payroll.allowances = allow;
+      payroll.deductions = deduct;
+      payroll.net_salary = net;
+      if (payment_status) payroll.payment_status = payment_status;
+      await payroll.save();
     } else {
-      record = await Payroll.create({
+      payroll = await Payroll.create({
         user_id,
-        basic_salary,
-        allowances,
-        deductions,
-        net_salary,
-        month,
-        year
+        month: currentMonth,
+        year: currentYear,
+        basic_salary: basic,
+        allowances: allow,
+        deductions: deduct,
+        net_salary: net,
+        payment_status: payment_status || 'Paid',
+        payment_date: new Date().toISOString().split('T')[0]
       });
     }
 
-    // Get month name
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    const monthName = monthNames[month - 1] || month;
-
-    // Create notification for employee
-    await Notification.create({
-      user_id,
-      message: `Your payroll for ${monthName} ${year} has been updated. Net Salary: $${net_salary.toFixed(2)}.`,
-      type: 'Payroll Update',
-      is_read: false
-    });
-
     return res.status(200).json({
-      message: 'Payroll record updated successfully',
-      payroll: record
+      message: 'Salary structure updated successfully',
+      payroll
     });
   } catch (error) {
-    console.error('Update payroll error:', error);
+    console.error('Update salary error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-exports.downloadPayslip = async (req, res) => {
+exports.downloadPayslipPDF = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const record = await Payroll.findByPk(id, {
+    const slipId = req.params.id;
+    const slip = await Payroll.findByPk(slipId, {
       include: [
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'name', 'employee_id', 'email', 'phone', 'address'],
-          include: [{ model: JobDetails, as: 'jobDetails', attributes: ['designation', 'department', 'joining_date'] }]
+          include: [{ model: JobDetails, as: 'jobDetails' }]
         }
       ]
     });
 
-    if (!record) {
+    if (!slip) {
       return res.status(404).json({ message: 'Payslip record not found' });
     }
 
-    // Security Check: Employee can only download their own payslip
-    if (req.user.role !== 'HR' && req.user.id !== record.user_id) {
-      return res.status(403).json({ message: 'Access Denied: You cannot view other employees slips' });
+    // Role check: HR or Self
+    if (req.user.role !== 'HR' && req.user.role !== 'Admin' && req.user.id !== slip.user_id) {
+      return res.status(403).json({ message: 'Forbidden: You cannot view other payslips' });
     }
 
-    const { user } = record;
-    const job = user.jobDetails || {};
-
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    const monthName = monthNames[record.month - 1] || record.month;
-
-    // Create a new PDF document
     const doc = new PDFDocument({ margin: 50 });
 
-    // Stream PDF directly to client response
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=payslip-${user.employee_id}-${monthName}-${record.year}.pdf`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=Payslip_${slip.user.employee_id}_${slip.month}_${slip.year}.pdf`
+    );
+
     doc.pipe(res);
 
-    // Add Company Info / Title
-    doc.fillColor('#1E293B').fontSize(24).text('Dayflow HRMS', { align: 'center' });
+    // Header Branding
+    doc.fontSize(22).fillColor('#1E3A8A').text('DAYFLOW HRMS', { align: 'center' });
     doc.fontSize(10).fillColor('#64748B').text('Every workday, perfectly aligned.', { align: 'center' });
     doc.moveDown(1.5);
 
-    // Title Section
-    doc.fillColor('#1E3A8A').fontSize(16).text(`SALARY SLIP - ${monthName.toUpperCase()} ${record.year}`, { align: 'center', underline: true });
-    doc.moveDown(2);
+    doc.fontSize(14).fillColor('#0F172A').text(`PAYSLIP - ${getMonthName(slip.month).toUpperCase()} ${slip.year}`, { align: 'center' });
+    doc.moveDown(1);
 
-    // Employee details section
-    doc.fillColor('#334155').fontSize(11);
-    doc.text(`Employee Name: ${user.name}`, 50, 150);
-    doc.text(`Employee ID: ${user.employee_id}`, 50, 168);
-    doc.text(`Email: ${user.email}`, 50, 186);
+    doc.strokeColor('#CBD5E1').lineWidth(1).moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(1);
 
-    doc.text(`Department: ${job.department || 'N/A'}`, 320, 150);
-    doc.text(`Designation: ${job.designation || 'N/A'}`, 320, 168);
-    doc.text(`Joining Date: ${job.joining_date || 'N/A'}`, 320, 186);
+    // Employee Information Block
+    const leftX = 50;
+    const rightX = 320;
+    const startY = doc.y;
 
-    // Separator line
-    doc.moveTo(50, 210).lineTo(550, 210).strokeColor('#CBD5E1').stroke();
-    doc.moveDown(2);
+    doc.fontSize(10).fillColor('#334155');
+    doc.text(`Employee Name: `, leftX, startY, { continued: true }).font('Helvetica-Bold').text(`${slip.user.name}`);
+    doc.font('Helvetica').text(`Employee ID: `, leftX, doc.y + 5, { continued: true }).font('Helvetica-Bold').text(`${slip.user.employee_id}`);
+    doc.font('Helvetica').text(`Email: `, leftX, doc.y + 5, { continued: true }).font('Helvetica-Bold').text(`${slip.user.email}`);
 
-    // Salary Structure Header
-    doc.fillColor('#1E3A8A').fontSize(12).text('Salary Structure Details', 50, 230);
+    doc.font('Helvetica').text(`Designation: `, rightX, startY, { continued: true }).font('Helvetica-Bold').text(`${slip.user.jobDetails?.designation || 'N/A'}`);
+    doc.font('Helvetica').text(`Department: `, rightX, doc.y + 5, { continued: true }).font('Helvetica-Bold').text(`${slip.user.jobDetails?.department || 'N/A'}`);
+    doc.font('Helvetica').text(`Payment Status: `, rightX, doc.y + 5, { continued: true }).font('Helvetica-Bold').text(`${slip.payment_status}`);
+
+    doc.moveDown(2.5);
+    doc.strokeColor('#CBD5E1').lineWidth(1).moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(1);
+
+    // Salary Table
+    doc.fontSize(12).fillColor('#1E3A8A').text('Earnings & Deductions Breakdown', 50, doc.y);
     doc.moveDown(0.5);
 
-    // Table Header
-    doc.rect(50, 250, 500, 25).fill('#F1F5F9');
-    doc.fillColor('#1E293B').fontSize(10);
-    doc.text('Description', 60, 258);
-    doc.text('Earnings ($)', 280, 258);
-    doc.text('Deductions ($)', 430, 258);
+    const tableTop = doc.y;
+    doc.fontSize(10).fillColor('#475569');
+    doc.text('Description', 60, tableTop);
+    doc.text('Amount (USD)', 420, tableTop, { align: 'right' });
 
-    // Row 1: Basic Salary
-    doc.text('Basic Salary', 60, 288);
-    doc.text(parseFloat(record.basic_salary).toFixed(2), 280, 288);
-    doc.text('-', 430, 288);
+    doc.moveDown(0.5);
+    doc.strokeColor('#E2E8F0').lineWidth(0.5).moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(0.5);
 
-    // Row 2: Allowances
-    doc.text('Allowances', 60, 312);
-    doc.text(parseFloat(record.allowances).toFixed(2), 280, 312);
-    doc.text('-', 430, 312);
+    // Rows
+    const items = [
+      { label: 'Basic Salary', amount: `+$${parseFloat(slip.basic_salary).toFixed(2)}` },
+      { label: 'Allowances & Bonuses', amount: `+$${parseFloat(slip.allowances).toFixed(2)}` },
+      { label: 'Statutory Deductions & Taxes', amount: `-$${parseFloat(slip.deductions).toFixed(2)}` }
+    ];
 
-    // Row 3: Deductions
-    doc.text('Deductions', 60, 336);
-    doc.text('-', 280, 336);
-    doc.text(parseFloat(record.deductions).toFixed(2), 430, 336);
+    items.forEach((item) => {
+      const y = doc.y;
+      doc.fillColor('#1E293B').text(item.label, 60, y);
+      doc.text(item.amount, 420, y, { align: 'right' });
+      doc.moveDown(0.5);
+    });
 
-    // Separator
-    doc.moveTo(50, 360).lineTo(550, 360).strokeColor('#E2E8F0').stroke();
+    doc.strokeColor('#1E3A8A').lineWidth(1.5).moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(0.8);
 
-    // Summary section
-    doc.rect(50, 380, 500, 40).fill('#EFF6FF');
-    doc.fillColor('#1E3A8A').fontSize(12);
-    doc.text('NET SALARY PAYABLE:', 60, 394);
-    doc.text(`$${parseFloat(record.net_salary).toFixed(2)}`, 380, 394, { align: 'right', width: 150 });
+    // Net Salary
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#0F172A').text('NET PAYABLE SALARY', 60, doc.y);
+    doc.text(`$${parseFloat(slip.net_salary).toFixed(2)}`, 420, doc.y - 12, { align: 'right' });
 
-    doc.moveDown(3);
+    doc.moveDown(4);
+    doc.fontSize(8).font('Helvetica').fillColor('#94A3B8').text('This is a computer-generated document from Dayflow HRMS. No physical signature is required.', { align: 'center' });
 
-    // Footer signatures
-    doc.fillColor('#64748B').fontSize(9);
-    doc.text('Employer Signature', 50, 480, { underline: true });
-    doc.text('Employee Signature', 400, 480, { underline: true });
-
-    doc.text('This is a system generated payslip and does not require a physical stamp.', 50, 540, { align: 'center' });
-
-    // End Document
     doc.end();
   } catch (error) {
-    console.error('Download payslip error:', error);
+    console.error('Download payslip error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
+function getMonthName(monthNumber) {
+  const date = new Date();
+  date.setMonth(monthNumber - 1);
+  return date.toLocaleString('en-US', { month: 'long' });
+}

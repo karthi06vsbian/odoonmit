@@ -1,5 +1,6 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 let sequelize;
 
@@ -14,7 +15,7 @@ if (dbUri || process.env.DB_DIALECT === 'mysql') {
       dialectOptions: {
         ssl: {
           require: true,
-          rejectUnauthorized: false // Bypasses self-signed certificate validation for easy Aiven connection
+          rejectUnauthorized: false
         }
       },
       pool: {
@@ -26,18 +27,18 @@ if (dbUri || process.env.DB_DIALECT === 'mysql') {
     });
   } else {
     sequelize = new Sequelize(
-      process.env.DB_NAME,
-      process.env.DB_USER,
+      process.env.DB_NAME || 'defaultdb',
+      process.env.DB_USER || 'avnadmin',
       process.env.DB_PASS,
       {
         host: process.env.DB_HOST,
-        port: process.env.DB_PORT || 3306,
+        port: parseInt(process.env.DB_PORT, 10) || 3306,
         dialect: 'mysql',
         logging: false,
         dialectOptions: {
           ssl: {
             require: true,
-            rejectUnauthorized: false // Bypasses self-signed certificate validation for easy Aiven connection
+            rejectUnauthorized: false
           }
         },
         pool: {
@@ -50,7 +51,7 @@ if (dbUri || process.env.DB_DIALECT === 'mysql') {
     );
   }
 } else {
-  // Fallback/Default to SQLite (handles writable /tmp directory on Vercel serverless)
+  // Local/Fallback SQLite
   const isVercel = !!process.env.VERCEL;
   const sqliteStorage = process.env.DB_STORAGE || (isVercel ? '/tmp/dayflow.sqlite' : './dayflow.sqlite');
   sequelize = new Sequelize({
@@ -65,8 +66,8 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log(`Database connected successfully using ${sequelize.getDialect()} dialect.`);
   } catch (error) {
-    console.error('Unable to connect to the database:', error);
-    process.exit(1);
+    console.error('Unable to connect to the database:', error.message);
+    throw error;
   }
 };
 

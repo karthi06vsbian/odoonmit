@@ -8,16 +8,16 @@ const User = sequelize.define('User', {
     primaryKey: true
   },
   employee_id: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING,
     allowNull: false,
     unique: true
   },
   name: {
-    type: DataTypes.STRING(255),
+    type: DataTypes.STRING,
     allowNull: false
   },
   email: {
-    type: DataTypes.STRING(255),
+    type: DataTypes.STRING,
     allowNull: false,
     unique: true,
     validate: {
@@ -25,39 +25,37 @@ const User = sequelize.define('User', {
     }
   },
   password_hash: {
-    type: DataTypes.STRING(255),
+    type: DataTypes.STRING,
     allowNull: false
   },
   role: {
-    type: DataTypes.ENUM('Employee', 'HR'),
-    allowNull: false,
-    defaultValue: 'Employee'
+    type: DataTypes.ENUM('Admin', 'HR', 'Employee'),
+    defaultValue: 'Employee',
+    allowNull: false
   },
   phone: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING,
     allowNull: true
   },
   address: {
-    type: DataTypes.TEXT,
+    type: DataTypes.STRING,
     allowNull: true
   },
   profile_pic: {
-    type: DataTypes.STRING(255),
-    allowNull: true
-  },
-  otp: {
-    type: DataTypes.STRING(6),
+    type: DataTypes.STRING,
     allowNull: true
   },
   is_verified: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false
+    defaultValue: true
+  },
+  otp: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 }, {
-  tableName: 'users',
   timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  tableName: 'Users'
 });
 
 module.exports = User;

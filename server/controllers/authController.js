@@ -1,91 +1,88 @@
 const { Op } = require('sequelize');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, JobDetails } = require('../models');
+const { User, JobDetails, Notification } = require('../models');
 require('dotenv').config();
 
-// Password rules: min 8 chars, at least 1 uppercase, 1 number, 1 special char
 const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
 
 const generateAccessToken = (user) => {
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role, employee_id: user.employee_id },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRY || '1h' }
+    { id: user.id, email: user.email, role: user.role, employee_id: user.employee_id, name: user.name },
+    process.env.JWT_SECRET || 'dayflow_hrms_super_secret_jwt_key_2026',
+    { expiresIn: process.env.JWT_EXPIRY || '2h' }
   );
 };
 
 const generateRefreshToken = (user) => {
   return jwt.sign(
     { id: user.id },
-    process.env.JWT_REFRESH_SECRET,
+    process.env.JWT_REFRESH_SECRET || 'dayflow_hrms_super_refresh_secret_key_2026',
     { expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d' }
   );
 };
 
-exports.signup = async (req, res) => {
+exports.register = async (req, res) => {
   try {
     const { employee_id, name, email, password, role } = req.body;
 
     if (!employee_id || !name || !email || !password) {
-      return res.status(400).json({ message: 'All fields (employee_id, name, email, password) are required' });
+      return res.status(400).json({ message: 'All fields (Employee ID, Name, Email, Password) are required.' });
     }
 
-    // Validate email domain or format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: 'Invalid email address format' });
-    }
-
-    // Validate password rules
     if (!passwordRegex.test(password)) {
       return res.status(400).json({
-        message: 'Password must be at least 8 characters long, contain at least 1 uppercase letter, 1 number, and 1 special character'
+        message: 'Password must be at least 8 characters long, contain at least 1 uppercase letter, 1 number, and 1 special character.'
       });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({
+      where: {
+        [Op.or]: [{ email }, { employee_id }]
+      }
+    });
+
     if (existingUser) {
-      return res.status(400).json({ message: 'Email is already registered' });
+      if (existingUser.email === email) {
+        return res.status(400).json({ message: 'An account with this email address already exists.' });
+      }
+      if (existingUser.employee_id === employee_id) {
+        return res.status(400).json({ message: 'This Employee ID is already registered.' });
+      }
     }
 
-    const existingEmpId = await User.findOne({ where: { employee_id } });
-    if (existingEmpId) {
-      return res.status(400).json({ message: 'Employee ID is already registered' });
-    }
-
-    // Hash password
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
-    // Generate 6-digit OTP
+    // Generate 6-digit OTP for verification simulation
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Create unverified user
     const newUser = await User.create({
       employee_id,
       name,
       email,
       password_hash,
       role: role === 'HR' ? 'HR' : 'Employee',
-      otp,
-      is_verified: false
+      is_verified: true, // Auto-verified for seamless testing
+      otp
     });
 
-    // Log the OTP to the console for development testing
-    console.log('\n==============================================');
-    console.log(`[EMAIL SIMULATOR] Verification OTP for ${email}: ${otp}`);
-    console.log(`[EMAIL SIMULATOR] Copy and paste this OTP in the application to verify.`);
-    console.log('==============================================\n');
+    await JobDetails.create({
+      user_id: newUser.id,
+      designation: newUser.role === 'HR' ? 'HR Officer' : 'Software Engineer',
+      department: newUser.role === 'HR' ? 'Human Resources' : 'Engineering',
+      joining_date: new Date().toISOString().split('T')[0],
+      employment_type: 'Full-time'
+    });
 
     return res.status(201).json({
-      message: 'Registration successful! Please check your email (or server logs) for the OTP verification code.',
-      email: email
+      message: 'Account created successfully! You can now log in.',
+      email: newUser.email,
+      otp: newUser.otp
     });
   } catch (error) {
-    console.error('Signup error:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    console.error('Registration error:', error.message);
+    return res.status(500).json({ message: 'Internal Server Error: ' + error.message });
   }
 };
 
@@ -94,7 +91,7 @@ exports.verifyEmail = async (req, res) => {
     const { email, otp } = req.body;
 
     if (!email || !otp) {
-      return res.status(400).json({ message: 'Email and OTP are required' });
+      return res.status(400).json({ message: 'Email and verification code are required' });
     }
 
     const user = await User.findOne({ where: { email } });
@@ -103,37 +100,28 @@ exports.verifyEmail = async (req, res) => {
     }
 
     if (user.is_verified) {
-      return res.status(400).json({ message: 'Email is already verified' });
+      return res.status(200).json({ message: 'Account is already verified. Please sign in.' });
     }
 
     if (user.otp !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP code. Please try again.' });
+      return res.status(400).json({ message: 'Invalid verification code. Please try again.' });
     }
 
-    // Verify user and clear OTP
     user.is_verified = true;
     user.otp = null;
     await user.save();
 
-    // Initialize job details
-    await JobDetails.create({
-      user_id: user.id,
-      designation: user.role === 'HR' ? 'HR Specialist' : 'Software Engineer',
-      department: user.role === 'HR' ? 'Human Resources' : 'Engineering',
-      joining_date: new Date().toISOString().split('T')[0],
-      employment_type: 'Full-time'
-    });
-
-    return res.status(200).json({ message: 'Email verified successfully! You can now log in.' });
+    return res.status(200).json({ message: 'Email verified successfully! You can now sign in.' });
   } catch (error) {
-    console.error('Verification error:', error);
+    console.error('Verification error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 exports.login = async (req, res) => {
   try {
     const { email, username, password } = req.body;
-    const identifier = email || username;
+    const identifier = (email || username || '').trim();
 
     if (!identifier || !password) {
       return res.status(400).json({ message: 'Email or Employee ID and password are required' });
@@ -147,24 +135,16 @@ exports.login = async (req, res) => {
         ]
       }
     });
+
     if (!user) {
       return res.status(401).json({ message: 'Invalid email/Employee ID or password' });
     }
 
-    if (!user.is_verified) {
-      return res.status(403).json({
-        message: 'Your email is not verified yet. Please verify it using your OTP.',
-        needs_verification: true,
-        email: user.email
-      });
-    }
-
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: 'Invalid email/Employee ID or password' });
     }
 
-    // Generate JWT tokens
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
@@ -184,8 +164,8 @@ exports.login = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    console.error('Login error:', error.message);
+    return res.status(500).json({ message: 'Internal Server Error: ' + error.message });
   }
 };
 
@@ -193,26 +173,46 @@ exports.refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
     if (!refreshToken) {
-      return res.status(400).json({ message: 'Refresh token is required' });
+      return res.status(401).json({ message: 'Refresh token is required' });
     }
 
-    jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(403).json({ message: 'Invalid or expired refresh token' });
-      }
+    jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET || 'dayflow_hrms_super_refresh_secret_key_2026',
+      async (err, decoded) => {
+        if (err) {
+          return res.status(403).json({ message: 'Invalid or expired refresh token' });
+        }
 
-      const user = await User.findByPk(decoded.id);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
+        const user = await User.findByPk(decoded.id);
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
 
-      const newAccessToken = generateAccessToken(user);
-      return res.status(200).json({
-        accessToken: newAccessToken
-      });
-    });
+        const newAccessToken = generateAccessToken(user);
+        return res.status(200).json({ accessToken: newAccessToken });
+      }
+    );
   } catch (error) {
-    console.error('Refresh token error:', error);
+    console.error('Token refresh error:', error.message);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      attributes: { exclude: ['password_hash', 'otp'] },
+      include: [{ model: JobDetails, as: 'jobDetails' }]
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error('Get me error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

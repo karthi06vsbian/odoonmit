@@ -9,36 +9,29 @@ const JobDetails = sequelize.define('JobDetails', {
   },
   user_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    },
-    onDelete: 'CASCADE'
+    allowNull: false
   },
   designation: {
-    type: DataTypes.STRING(255),
-    allowNull: false,
-    defaultValue: 'Intern'
+    type: DataTypes.STRING,
+    defaultValue: 'Software Engineer',
+    allowNull: false
   },
   department: {
-    type: DataTypes.STRING(255),
-    allowNull: false,
-    defaultValue: 'General'
+    type: DataTypes.STRING,
+    defaultValue: 'Engineering',
+    allowNull: false
   },
   joining_date: {
     type: DataTypes.DATEONLY,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
+    allowNull: true
   },
   employment_type: {
-    type: DataTypes.STRING(100),
-    allowNull: false,
+    type: DataTypes.ENUM('Full-time', 'Part-time', 'Contract', 'Internship'),
     defaultValue: 'Full-time'
   }
 }, {
-  tableName: 'job_details',
-  timestamps: false
+  timestamps: true,
+  tableName: 'JobDetails'
 });
 
 module.exports = JobDetails;

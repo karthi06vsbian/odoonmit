@@ -5,11 +5,11 @@ const LeaveRequest = require('./LeaveRequest');
 const Payroll = require('./Payroll');
 const Notification = require('./Notification');
 
-// Define associations
+// Define Relationships
 User.hasOne(JobDetails, { foreignKey: 'user_id', as: 'jobDetails', onDelete: 'CASCADE' });
 JobDetails.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
-User.hasMany(Attendance, { foreignKey: 'user_id', as: 'attendance', onDelete: 'CASCADE' });
+User.hasMany(Attendance, { foreignKey: 'user_id', as: 'attendances', onDelete: 'CASCADE' });
 Attendance.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
 User.hasMany(LeaveRequest, { foreignKey: 'user_id', as: 'leaveRequests', onDelete: 'CASCADE' });

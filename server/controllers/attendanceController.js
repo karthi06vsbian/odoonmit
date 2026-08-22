@@ -1,63 +1,44 @@
-const { Attendance, LeaveRequest, User, JobDetails } = require('../models');
 const { Op } = require('sequelize');
-
-// Helper to get dates in range
-const getDatesInRange = (startDate, endDate) => {
-  const dates = [];
-  let curr = new Date(startDate);
-  const end = new Date(endDate);
-  while (curr <= end) {
-    dates.push(curr.toISOString().split('T')[0]);
-    curr.setDate(curr.getDate() + 1);
-  }
-  return dates;
-};
+const { Attendance, User, JobDetails, Notification } = require('../models');
 
 exports.checkIn = async (req, res) => {
   try {
     const userId = req.user.id;
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    // Check if on approved leave today
-    const approvedLeave = await LeaveRequest.findOne({
-      where: {
-        user_id: userId,
-        status: 'Approved',
-        start_date: { [Op.lte]: todayStr },
-        end_date: { [Op.gte]: todayStr }
-      }
-    });
-
-    if (approvedLeave) {
-      return res.status(400).json({ message: 'You have an approved leave for today. Check-in is not allowed.' });
-    }
+    const today = new Date().toISOString().split('T')[0];
 
     // Check if already checked in today
-    const existingRecord = await Attendance.findOne({
-      where: {
-        user_id: userId,
-        date: todayStr
-      }
+    let record = await Attendance.findOne({
+      where: { user_id: userId, date: today }
     });
 
-    if (existingRecord) {
-      return res.status(400).json({ message: 'You have already checked in today' });
+    if (record && record.check_in) {
+      return res.status(400).json({
+        message: 'You have already checked in today at ' + new Date(record.check_in).toLocaleTimeString(),
+        attendance: record
+      });
     }
 
-    // Create attendance record
-    const attendance = await Attendance.create({
-      user_id: userId,
-      date: todayStr,
-      check_in: new Date(),
-      status: 'Present' // Default to present upon checking in
-    });
+    const now = new Date();
+    if (!record) {
+      record = await Attendance.create({
+        user_id: userId,
+        date: today,
+        check_in: now,
+        status: 'Present',
+        notes: req.body.notes || 'Checked in via web portal'
+      });
+    } else {
+      record.check_in = now;
+      record.status = 'Present';
+      await record.save();
+    }
 
     return res.status(200).json({
-      message: 'Checked in successfully',
-      attendance
+      message: 'Checked in successfully at ' + now.toLocaleTimeString(),
+      attendance: record
     });
   } catch (error) {
-    console.error('Check-in error:', error);
+    console.error('Check-in error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
@@ -65,47 +46,73 @@ exports.checkIn = async (req, res) => {
 exports.checkOut = async (req, res) => {
   try {
     const userId = req.user.id;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
 
-    // Find attendance record for today
-    const attendance = await Attendance.findOne({
-      where: {
-        user_id: userId,
-        date: todayStr
-      }
+    const record = await Attendance.findOne({
+      where: { user_id: userId, date: today }
     });
 
-    if (!attendance) {
-      return res.status(400).json({ message: 'You must check-in first before checking out' });
+    if (!record || !record.check_in) {
+      return res.status(400).json({ message: 'You have not checked in yet today' });
     }
 
-    if (attendance.check_out) {
-      return res.status(400).json({ message: 'You have already checked out today' });
+    if (record.check_out) {
+      return res.status(400).json({
+        message: 'You have already checked out today at ' + new Date(record.check_out).toLocaleTimeString(),
+        attendance: record
+      });
     }
 
-    const checkOutTime = new Date();
-    attendance.check_out = checkOutTime;
+    const now = new Date();
+    record.check_out = now;
 
-    // Calculate hours worked
-    const checkInTime = new Date(attendance.check_in);
-    const diffMs = checkOutTime - checkInTime;
-    const diffHours = diffMs / (1000 * 60 * 60);
+    // Calculate total hours
+    const diffMs = now.getTime() - new Date(record.check_in).getTime();
+    const diffHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+    record.total_hours = diffHours;
 
-    // If hours < 4, status is 'Half-day', otherwise 'Present'
-    if (diffHours < 4) {
-      attendance.status = 'Half-day';
+    // Determine status based on duration
+    if (diffHours >= 8.0) {
+      record.status = 'Present';
+    } else if (diffHours >= 4.0) {
+      record.status = 'Half-day';
     } else {
-      attendance.status = 'Present';
+      record.status = 'Absent';
     }
 
-    await attendance.save();
+    if (req.body.notes) {
+      record.notes = record.notes ? `${record.notes} | ${req.body.notes}` : req.body.notes;
+    }
+
+    await record.save();
 
     return res.status(200).json({
-      message: `Checked out successfully. Work duration: ${diffHours.toFixed(2)} hours.`,
-      attendance
+      message: `Checked out successfully. Total Work Duration: ${diffHours} hrs (${record.status})`,
+      attendance: record
     });
   } catch (error) {
-    console.error('Check-out error:', error);
+    console.error('Check-out error:', error.message);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+exports.getTodayStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date().toISOString().split('T')[0];
+
+    const record = await Attendance.findOne({
+      where: { user_id: userId, date: today }
+    });
+
+    return res.status(200).json({
+      date: today,
+      isCheckedIn: Boolean(record && record.check_in),
+      isCheckedOut: Boolean(record && record.check_out),
+      attendance: record || null
+    });
+  } catch (error) {
+    console.error('Get today status error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
@@ -113,166 +120,76 @@ exports.checkOut = async (req, res) => {
 exports.getMyAttendance = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { start_date, end_date } = req.query;
+    const { startDate, endDate, limit } = req.query;
+    const where = { user_id: userId };
 
-    if (!start_date || !end_date) {
-      return res.status(400).json({ message: 'start_date and end_date query parameters are required' });
+    if (startDate && endDate) {
+      where.date = { [Op.between]: [startDate, endDate] };
     }
 
-    // Fetch existing attendance records
-    const attendanceRecords = await Attendance.findAll({
-      where: {
-        user_id: userId,
-        date: {
-          [Op.between]: [start_date, end_date]
-        }
-      }
+    const records = await Attendance.findAll({
+      where,
+      order: [['date', 'DESC']],
+      limit: limit ? parseInt(limit, 10) : 30
     });
 
-    // Fetch approved leave requests that overlap with the date range
-    const leaveRequests = await LeaveRequest.findAll({
-      where: {
-        user_id: userId,
-        status: 'Approved',
-        [Op.or]: [
-          { start_date: { [Op.between]: [start_date, end_date] } },
-          { end_date: { [Op.between]: [start_date, end_date] } },
-          {
-            start_date: { [Op.lte]: start_date },
-            end_date: { [Op.gte]: end_date }
-          }
-        ]
-      }
-    });
-
-    const attendanceMap = new Map();
-    attendanceRecords.forEach(r => attendanceMap.set(r.date, r));
-
-    const dateList = getDatesInRange(start_date, end_date);
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    const filledRecords = dateList.map(dateStr => {
-      // 1. If we have a recorded check-in/out
-      if (attendanceMap.has(dateStr)) {
-        return attendanceMap.get(dateStr);
-      }
-
-      // 2. Check if this date has an approved leave
-      const isOnLeave = leaveRequests.some(l => dateStr >= l.start_date && dateStr <= l.end_date);
-      if (isOnLeave) {
-        return {
-          user_id: userId,
-          date: dateStr,
-          check_in: null,
-          check_out: null,
-          status: 'Leave'
-        };
-      }
-
-      // 3. For past weekdays (Mon-Fri), set as Absent if no check-in
-      const dateObj = new Date(dateStr);
-      const isPast = dateStr < todayStr;
-      const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6; // Sun=0, Sat=6
-
-      if (isPast && !isWeekend) {
-        return {
-          user_id: userId,
-          date: dateStr,
-          check_in: null,
-          check_out: null,
-          status: 'Absent'
-        };
-      }
-
-      // 4. Default for future or weekends with no activity
-      return {
-        user_id: userId,
-        date: dateStr,
-        check_in: null,
-        check_out: null,
-        status: isWeekend ? 'Weekend' : 'Absent' // 'Absent' for weekday future days before clocking
-      };
-    });
-
-    return res.status(200).json(filledRecords);
+    return res.status(200).json(records);
   } catch (error) {
-    console.error('Get my attendance error:', error);
+    console.error('Get my attendance error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
 exports.getAllAttendance = async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, status, department, search } = req.query;
+    const where = {};
 
-    if (!date) {
-      return res.status(400).json({ message: 'date query parameter is required (YYYY-MM-DD)' });
+    if (date) {
+      where.date = date;
     }
 
-    // Get all users
-    const users = await User.findAll({
-      attributes: ['id', 'name', 'employee_id', 'role'],
-      include: [{ model: JobDetails, as: 'jobDetails', attributes: ['designation', 'department'] }]
-    });
+    if (status) {
+      where.status = status;
+    }
 
-    // Get attendance for the date
-    const attendanceRecords = await Attendance.findAll({
-      where: { date }
-    });
+    const userWhere = {};
+    if (search) {
+      userWhere[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { employee_id: { [Op.like]: `%${search}%` } }
+      ];
+    }
 
-    // Get approved leaves for the date
-    const leaveRequests = await LeaveRequest.findAll({
-      where: {
-        status: 'Approved',
-        start_date: { [Op.lte]: date },
-        end_date: { [Op.gte]: date }
-      }
-    });
+    const jobWhere = {};
+    if (department) {
+      jobWhere.department = department;
+    }
 
-    const attendanceMap = new Map();
-    attendanceRecords.forEach(r => attendanceMap.set(r.user_id, r));
-
-    const leaveUserIds = new Set(leaveRequests.map(l => l.user_id));
-
-    const results = users.map(user => {
-      const job = user.jobDetails || {};
-      const record = attendanceMap.get(user.id);
-      
-      let status = 'Absent';
-      let check_in = null;
-      let check_out = null;
-
-      if (record) {
-        status = record.status;
-        check_in = record.check_in;
-        check_out = record.check_out;
-      } else if (leaveUserIds.has(user.id)) {
-        status = 'Leave';
-      } else {
-        const dateObj = new Date(date);
-        const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-        if (isWeekend) {
-          status = 'Weekend';
+    const records = await Attendance.findAll({
+      where,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          where: Object.keys(userWhere).length > 0 ? userWhere : undefined,
+          attributes: ['id', 'name', 'employee_id', 'email', 'profile_pic'],
+          include: [
+            {
+              model: JobDetails,
+              as: 'jobDetails',
+              where: Object.keys(jobWhere).length > 0 ? jobWhere : undefined,
+              attributes: ['designation', 'department']
+            }
+          ]
         }
-      }
-
-      return {
-        user_id: user.id,
-        employee_id: user.employee_id,
-        name: user.name,
-        role: user.role,
-        department: job.department || 'N/A',
-        designation: job.designation || 'N/A',
-        date,
-        check_in,
-        check_out,
-        status
-      };
+      ],
+      order: [['date', 'DESC'], ['check_in', 'DESC']]
     });
 
-    return res.status(200).json(results);
+    return res.status(200).json(records);
   } catch (error) {
-    console.error('Get all attendance error:', error);
+    console.error('Get all attendance error:', error.message);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

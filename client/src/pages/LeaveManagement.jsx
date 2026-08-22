@@ -2,353 +2,371 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { toast } from 'react-toastify';
-import { CalendarClock, FilePlus2, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { 
+  CalendarCheck, 
+  Plus, 
+  Check, 
+  X, 
+  Clock, 
+  FileText, 
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  XCircle
+} from 'lucide-react';
 
 export const LeaveManagement = () => {
-  const { user, fetchNotifications } = useAuth();
-  const isHR = user?.role === 'HR';
+  const { user, isHR } = useAuth();
 
-  // Apply Leave form state
+  // Leaves state
+  const [myLeaves, setMyLeaves] = useState([]);
+  const [allLeaves, setAllLeaves] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Application Modal state
+  const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     leave_type: 'Paid',
     start_date: '',
     end_date: '',
-    remarks: ''
+    reason: ''
   });
-  const [applying, setApplying] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Leave Logs (Employee/HR)
-  const [myLeaves, setMyLeaves] = useState([]);
-  const [allLeaves, setAllLeaves] = useState([]);
-  const [loadingList, setLoadingList] = useState(true);
-
-  // Review (HR) modal/comment state
-  const [reviewingId, setReviewingId] = useState(null);
-  const [adminComment, setAdminComment] = useState('');
-  const [reviewLoading, setReviewLoading] = useState(false);
-
-  const fetchLeaves = async () => {
-    setLoadingList(true);
-    try {
-      if (isHR) {
-        const resAll = await api.get('/leave/all');
-        setAllLeaves(resAll.data);
-      }
-      const resMy = await api.get('/leave/my-leaves');
-      setMyLeaves(resMy.data);
-    } catch (error) {
-      toast.error('Failed to load leave records');
-    } finally {
-      setLoadingList(false);
-    }
-  };
+  // Approval action comment state
+  const [actionComments, setActionComments] = useState({});
 
   useEffect(() => {
     fetchLeaves();
-  }, []);
+  }, [isHR]);
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const fetchLeaves = async () => {
+    setLoading(true);
+    try {
+      if (isHR) {
+        const resAll = await api.get('/leave/all');
+        setAllLeaves(resAll.data || []);
+      }
+      const resMy = await api.get('/leave/my-leaves');
+      setMyLeaves(resMy.data || []);
+    } catch (error) {
+      console.error('Error fetching leaves:', error);
+      toast.error('Failed to load leave records');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleApplySubmit = async (e) => {
     e.preventDefault();
-    const { leave_type, start_date, end_date, remarks } = formData;
-
-    if (!start_date || !end_date) {
-      return toast.error('Please specify the date range');
+    if (!formData.start_date || !formData.end_date) {
+      return toast.error('Please select both start and end dates');
     }
 
-    if (new Date(end_date) < new Date(start_date)) {
-      return toast.error('End date cannot be earlier than start date');
-    }
-
-    setApplying(true);
+    setSubmitting(true);
     try {
-      const res = await api.post('/leave/apply', { leave_type, start_date, end_date, remarks });
-      toast.success(res.data.message);
-      
-      // Reset form and reload list
-      setFormData({
-        leave_type: 'Paid',
-        start_date: '',
-        end_date: '',
-        remarks: ''
-      });
+      const res = await api.post('/leave/apply', formData);
+      toast.success(res.data.message || 'Leave application submitted!');
+      setShowModal(false);
+      setFormData({ leave_type: 'Paid', start_date: '', end_date: '', reason: '' });
       fetchLeaves();
-      fetchNotifications();
     } catch (error) {
+      console.error(error);
       toast.error(error.response?.data?.message || 'Failed to submit leave request');
     } finally {
-      setApplying(false);
+      setSubmitting(false);
     }
   };
 
-  const handleReviewLeave = async (id, status) => {
-    setReviewLoading(true);
+  const handleReviewAction = async (leaveId, status) => {
+    const admin_comment = actionComments[leaveId] || '';
     try {
-      const res = await api.put(`/leave/review/${id}`, {
-        status,
-        admin_comment: adminComment
-      });
-      toast.success(res.data.message);
-      
-      // Reset states and refresh
-      setReviewingId(null);
-      setAdminComment('');
+      const res = await api.put(`/leave/${leaveId}/review`, { status, admin_comment });
+      toast.success(res.data.message || `Leave request ${status}`);
       fetchLeaves();
-      fetchNotifications();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update leave status');
-    } finally {
-      setReviewLoading(false);
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Action failed');
     }
   };
 
   const getStatusBadge = (status) => {
     switch (status) {
       case 'Approved':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xxs font-semibold bg-emerald-500/10 text-emerald-400"><CheckCircle2 className="h-3 w-3 mr-1" />Approved</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xxs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <CheckCircle2 className="mr-1 h-3 w-3" /> Approved
+          </span>
+        );
       case 'Rejected':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xxs font-semibold bg-rose-500/10 text-rose-400"><XCircle className="h-3 w-3 mr-1" />Rejected</span>;
-      case 'Pending':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xxs font-semibold bg-amber-500/10 text-amber-400"><Clock className="h-3 w-3 mr-1" />Pending</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xxs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <XCircle className="mr-1 h-3 w-3" /> Rejected
+          </span>
+        );
       default:
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xxs font-semibold bg-slate-800 text-slate-400">{status}</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xxs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+            <Clock className="mr-1 h-3 w-3" /> Pending Review
+          </span>
+        );
     }
   };
 
-  const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h2 className="text-xl font-bold text-white tracking-wide">Leave & Time-Off</h2>
-        <p className="text-xs text-slate-400 font-medium">Apply for leaves, track approvals, and check balances.</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Apply Leave Form */}
-        <div className="lg:col-span-1 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg h-fit">
-          <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center">
-            <FilePlus2 className="mr-2 h-4.5 w-4.5" />
-            Apply for Leave
-          </h3>
-
-          <form onSubmit={handleApplySubmit} className="space-y-4 text-xs">
-            <div>
-              <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Leave Type
-              </label>
-              <select
-                name="leave_type"
-                value={formData.leave_type}
-                onChange={handleInputChange}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white focus:outline-none focus:border-blue-500"
-              >
-                <option value="Paid" className="bg-slate-900">Paid Leave</option>
-                <option value="Sick" className="bg-slate-900">Sick Leave</option>
-                <option value="Unpaid" className="bg-slate-900">Unpaid Leave</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  name="start_date"
-                  value={formData.start_date}
-                  onChange={handleInputChange}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white focus:outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                  End Date
-                </label>
-                <input
-                  type="date"
-                  name="end_date"
-                  value={formData.end_date}
-                  onChange={handleInputChange}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2.5 px-3 text-white focus:outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Remarks / Purpose
-              </label>
-              <textarea
-                name="remarks"
-                rows={4}
-                value={formData.remarks}
-                onChange={handleInputChange}
-                placeholder="Reason for requesting leave..."
-                className="w-full rounded-lg border border-slate-800 bg-slate-950/50 py-2 px-3 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 resize-none"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={applying}
-              className="flex w-full items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/10 transition-colors disabled:opacity-50"
-            >
-              {applying ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-              ) : (
-                'Submit Application'
-              )}
-            </button>
-          </form>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center">
+            <CalendarCheck className="mr-2.5 h-6 w-6 text-emerald-500" />
+            Time-Off & Leave Management
+          </h2>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+            Request time off, monitor leave balances, and review team approval queues.
+          </p>
         </div>
 
-        {/* Right Column: Approval Queue & My Requests list */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* HR Pending Approvals Queue */}
-          {isHR && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center pb-3 border-b border-slate-800">
-                <AlertTriangle className="mr-2 h-4.5 w-4.5 text-amber-500" />
-                Pending Leave Approvals Queue
-              </h3>
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all"
+        >
+          <Plus className="mr-1.5 h-4 w-4" />
+          Apply for Leave
+        </button>
+      </div>
 
-              <div className="space-y-4">
-                {loadingList ? (
-                  <div className="flex justify-center items-center py-8">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
-                  </div>
-                ) : allLeaves.filter(l => l.status === 'Pending').length === 0 ? (
-                  <p className="text-xs text-slate-500 py-4 text-center">No pending leave requests in queue.</p>
-                ) : (
-                  allLeaves.filter(l => l.status === 'Pending').map((request) => (
-                    <div key={request.id} className="rounded-lg bg-slate-950/40 border border-slate-800 p-4 space-y-3.5 text-xs">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="block font-bold text-slate-100">{request.user?.name}</span>
-                          <span className="block text-xxs text-slate-500">{request.user?.employee_id} • {request.user?.jobDetails?.department}</span>
-                        </div>
-                        <span className="inline-flex px-2 py-0.5 rounded text-xxs font-semibold bg-blue-500/10 text-blue-400 capitalize">
-                          {request.leave_type} Leave
-                        </span>
-                      </div>
-
-                      <div className="text-slate-300 bg-slate-950/30 p-2.5 rounded border border-slate-900 font-normal">
-                        <p className="font-semibold text-slate-400 mb-1">Remarks:</p>
-                        "{request.remarks}"
-                      </div>
-
-                      <div className="flex justify-between items-center text-xxs text-slate-400">
-                        <span>Duration: <strong className="text-slate-200">{formatDate(request.start_date)}</strong> to <strong className="text-slate-200">{formatDate(request.end_date)}</strong></span>
-                      </div>
-
-                      {/* Approval Box */}
-                      {reviewingId === request.id ? (
-                        <div className="space-y-3 pt-2 border-t border-slate-900">
-                          <textarea
-                            rows={2}
-                            placeholder="Add comments or review feedback (optional)..."
-                            value={adminComment}
-                            onChange={(e) => setAdminComment(e.target.value)}
-                            className="w-full rounded border border-slate-800 bg-slate-950 px-2 py-1.5 text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
-                          />
-                          <div className="flex justify-end space-x-2">
-                            <button
-                              onClick={() => setReviewingId(null)}
-                              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-750 text-slate-400 font-semibold"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleReviewLeave(request.id, 'Rejected')}
-                              disabled={reviewLoading}
-                              className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-semibold flex items-center"
-                            >
-                              Reject
-                            </button>
-                            <button
-                              onClick={() => handleReviewLeave(request.id, 'Approved')}
-                              disabled={reviewLoading}
-                              className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center"
-                            >
-                              Approve
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-end border-t border-slate-900/60 pt-2.5">
-                          <button
-                            onClick={() => setReviewingId(request.id)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded text-xxs transition-colors"
-                          >
-                            Review & Decide
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
+      {/* Leave Application Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white">New Leave Application</h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-          )}
 
-          {/* My Leave Requests log */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-            <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center pb-3 border-b border-slate-800">
-              <CalendarClock className="mr-2 h-4.5 w-4.5" />
-              My Time-Off Applications
-            </h3>
+            <form onSubmit={handleApplySubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Leave Type
+                </label>
+                <select
+                  value={formData.leave_type}
+                  onChange={(e) => setFormData({ ...formData, leave_type: e.target.value })}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="Paid">Paid Vacation Leave</option>
+                  <option value="Sick">Sick / Medical Leave</option>
+                  <option value="Unpaid">Unpaid Leave</option>
+                </select>
+              </div>
 
-            <div className="overflow-x-auto text-xs">
-              {loadingList ? (
-                <div className="flex justify-center items-center py-12">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.start_date}
+                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
+                    required
+                  />
                 </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.end_date}
+                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Reason / Remarks
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.reason}
+                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                  placeholder="Provide context or handover details for your request..."
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
+                ></textarea>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="rounded-lg border border-slate-700 py-2 px-4 text-xs font-semibold text-slate-400 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="rounded-lg bg-blue-600 py-2 px-4 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {submitting ? 'Submitting...' : 'Submit Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Layout */}
+      <div className="space-y-6">
+        {/* HR Approval Queue Section (Visible only to HR/Admin) */}
+        {isHR && (
+          <div className="rounded-2xl border border-amber-500/20 bg-slate-900/80 p-6 shadow-xl relative overflow-hidden">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center">
+                  <AlertCircle className="mr-2 h-4 w-4" />
+                  Staff Leave Approvals Queue (HR Action)
+                </h3>
+                <p className="text-xxs text-slate-400 mt-0.5">Approve or reject employee time-off applications with comments</p>
+              </div>
+              <span className="text-xs font-bold px-2.5 py-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                {allLeaves.filter(l => l.status === 'Pending').length} Pending
+              </span>
+            </div>
+
+            <div className="overflow-x-auto text-xs font-normal">
+              {allLeaves.length === 0 ? (
+                <p className="text-center py-8 text-slate-500">No leave requests have been submitted yet.</p>
               ) : (
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
-                      <th className="py-2.5">Leave Type</th>
-                      <th className="py-2.5">Start Date</th>
-                      <th className="py-2.5">End Date</th>
+                      <th className="py-2.5">Staff Name</th>
+                      <th className="py-2.5">Type</th>
+                      <th className="py-2.5">Duration</th>
+                      <th className="py-2.5">Dates</th>
+                      <th className="py-2.5">Reason</th>
                       <th className="py-2.5">Status</th>
-                      <th className="py-2.5 text-right">Approver Comments</th>
+                      <th className="py-2.5 text-right">Approval Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/40 text-slate-300">
-                    {myLeaves.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-500">You haven't submitted any leave applications.</td>
+                    {allLeaves.map((leave) => (
+                      <tr key={leave.id} className="hover:bg-slate-850/20">
+                        <td className="py-3">
+                          <p className="font-semibold text-slate-100">{leave.user?.name || 'Staff'}</p>
+                          <p className="text-xxs text-slate-500">{leave.user?.employee_id} • {leave.user?.jobDetails?.department}</p>
+                        </td>
+                        <td className="py-3">
+                          <span className="font-medium text-slate-300 capitalize">{leave.leave_type} Leave</span>
+                        </td>
+                        <td className="py-3 font-mono">{leave.days_count} day(s)</td>
+                        <td className="py-3 text-slate-400">{leave.start_date} to {leave.end_date}</td>
+                        <td className="py-3 text-xxs text-slate-400 max-w-xs truncate" title={leave.reason}>
+                          {leave.reason || 'No remarks provided'}
+                        </td>
+                        <td className="py-3">{getStatusBadge(leave.status)}</td>
+                        <td className="py-3 text-right">
+                          {leave.status === 'Pending' ? (
+                            <div className="flex items-center justify-end space-x-2">
+                              <input
+                                type="text"
+                                placeholder="Add remark..."
+                                value={actionComments[leave.id] || ''}
+                                onChange={(e) => setActionComments({ ...actionComments, [leave.id]: e.target.value })}
+                                className="rounded border border-slate-700 bg-slate-950/60 py-1 px-2 text-xxs text-white w-28 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => handleReviewAction(leave.id, 'Approved')}
+                                className="rounded bg-emerald-600 hover:bg-emerald-500 p-1 text-white shadow transition-colors"
+                                title="Approve Leave"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleReviewAction(leave.id, 'Rejected')}
+                                className="rounded bg-rose-600 hover:bg-rose-500 p-1 text-white shadow transition-colors"
+                                title="Reject Leave"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xxs text-slate-500 italic">
+                              {leave.admin_comment ? `Remark: "${leave.admin_comment}"` : 'Completed'}
+                            </span>
+                          )}
+                        </td>
                       </tr>
-                    ) : (
-                      myLeaves.map((leave) => (
-                        <tr key={leave.id} className="hover:bg-slate-850/20">
-                          <td className="py-2.5 font-semibold text-slate-200 capitalize">{leave.leave_type} Leave</td>
-                          <td className="py-2.5">{leave.start_date}</td>
-                          <td className="py-2.5">{leave.end_date}</td>
-                          <td className="py-2.5">{getStatusBadge(leave.status)}</td>
-                          <td className="py-2.5 text-right text-xxs text-slate-400 italic font-normal truncate max-w-xs" title={leave.admin_comment}>
-                            {leave.admin_comment || '-'}
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Employee's Own Leave History */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center">
+              <Calendar className="mr-2 h-4 w-4 text-blue-400" />
+              My Time-Off Requests
+            </h3>
+            <span className="text-xxs text-slate-500">Historical History</span>
+          </div>
+
+          <div className="overflow-x-auto text-xs font-normal">
+            {loading ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                    <th className="py-2.5">Leave Type</th>
+                    <th className="py-2.5">Duration</th>
+                    <th className="py-2.5">Start Date</th>
+                    <th className="py-2.5">End Date</th>
+                    <th className="py-2.5">Status</th>
+                    <th className="py-2.5 text-right">Approver Comments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/40 text-slate-300">
+                  {myLeaves.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-500">You haven't submitted any leave applications yet.</td>
+                    </tr>
+                  ) : (
+                    myLeaves.map((leave) => (
+                      <tr key={leave.id} className="hover:bg-slate-850/20">
+                        <td className="py-2.5 font-semibold text-slate-200 capitalize">{leave.leave_type} Leave</td>
+                        <td className="py-2.5 font-mono">{leave.days_count} day(s)</td>
+                        <td className="py-2.5">{leave.start_date}</td>
+                        <td className="py-2.5">{leave.end_date}</td>
+                        <td className="py-2.5">{getStatusBadge(leave.status)}</td>
+                        <td className="py-2.5 text-right text-xxs text-slate-400 italic font-normal truncate max-w-xs" title={leave.admin_comment}>
+                          {leave.admin_comment || '-'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

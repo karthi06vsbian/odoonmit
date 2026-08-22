@@ -29,7 +29,7 @@ import {
 
 export const Dashboard = () => {
   const { user } = useAuth();
-  const isHR = user?.role === 'HR';
+  const isHR = user?.role === 'HR' || user?.role === 'Admin';
   const navigate = useNavigate();
 
   // Employee Dashboard states
@@ -48,348 +48,359 @@ export const Dashboard = () => {
     pendingLeaves: 0
   });
   const [employeeList, setEmployeeList] = useState([]);
-  const [attendanceChartData, setAttendanceChartData] = useState([]);
-  const [leaveChartData, setLeaveChartData] = useState([]);
   const [adminLoading, setAdminLoading] = useState(isHR);
 
-  // Admin Search & Filter
+  // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
 
-  const fetchEmployeeDashboard = async () => {
+  useEffect(() => {
+    if (isHR) {
+      fetchAdminData();
+    } else {
+      fetchEmployeeData();
+    }
+  }, [isHR]);
+
+  const fetchEmployeeData = async () => {
+    setEmpLoading(true);
     try {
-      setEmpLoading(true);
-      // Get attendance log for today
-      const todayStr = new Date().toISOString().split('T')[0];
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      const startStr = monthStart.toISOString().split('T')[0];
+      const [todayRes, leavesRes, payrollRes, notifRes] = await Promise.all([
+        api.get('/attendance/today'),
+        api.get('/leave/my-leaves'),
+        api.get('/payroll/my-slips'),
+        api.get('/notifications')
+      ]);
 
-      const resAttendance = await api.get(`/attendance/my-attendance?start_date=${startStr}&end_date=${todayStr}`);
-      const todayRec = resAttendance.data.find(r => r.date === todayStr);
-
-      const resLeaves = await api.get('/leave/my-leaves');
-      const resPayroll = await api.get('/payroll/my-payroll');
-
+      const pendingCount = (leavesRes.data || []).filter(l => l.status === 'Pending').length;
       setEmpStats({
-        todayStatus: todayRec ? todayRec.status : 'Absent',
-        pendingLeaves: resLeaves.data.filter(l => l.status === 'Pending').length,
-        totalSlips: resPayroll.data.length
+        todayStatus: todayRes.data?.attendance?.status || (todayRes.data?.isCheckedIn ? 'Present' : 'Absent'),
+        pendingLeaves: pendingCount,
+        totalSlips: (payrollRes.data || []).length
       });
 
-      // Populate recent activities (combining logs)
-      const activities = [];
-      resAttendance.data.slice(-3).reverse().forEach(a => {
-        if (a.check_in) {
-          activities.push({
-            title: `Clocked in on ${a.date}`,
-            time: new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            color: 'bg-emerald-500/20 text-emerald-400'
-          });
-        }
-      });
-      resLeaves.data.slice(0, 2).forEach(l => {
-        activities.push({
-          title: `${l.leave_type} Leave request: ${l.status}`,
-          time: new Date(l.applied_at).toLocaleDateString(),
-          color: l.status === 'Approved' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-amber-500/20 text-amber-400'
-        });
-      });
-
-      setRecentActivities(activities.slice(0, 4));
+      setRecentActivities(notifRes.data?.notifications?.slice(0, 5) || []);
     } catch (error) {
-      console.error(error);
+      console.error('Error fetching employee dashboard:', error);
     } finally {
       setEmpLoading(false);
     }
   };
 
-  const fetchAdminDashboard = async () => {
+  const fetchAdminData = async () => {
+    setAdminLoading(true);
     try {
-      setAdminLoading(true);
-      
-      // Get all employees
-      const resUsers = await api.get('/users');
-      const staff = resUsers.data.filter(u => u.role === 'Employee');
+      const [usersRes, attRes, leavesRes] = await Promise.all([
+        api.get('/users'),
+        api.get('/attendance/all'),
+        api.get('/leave/all')
+      ]);
 
-      // Get today's attendance
-      const todayStr = new Date().toISOString().split('T')[0];
-      const resAtt = await api.get(`/attendance/all?date=${todayStr}`);
+      const employees = usersRes.data || [];
+      const attendances = attRes.data || [];
+      const leaves = leavesRes.data || [];
 
-      // Get all leaves
-      const resLeaves = await api.get('/leave/all');
-      const pendingLeaves = resLeaves.data.filter(l => l.status === 'Pending');
+      const today = new Date().toISOString().split('T')[0];
+      const todayChecks = attendances.filter(a => a.date === today && a.check_in).length;
+      const pendingLeavesCount = leaves.filter(l => l.status === 'Pending').length;
 
       setAdminStats({
-        totalEmployees: staff.length,
-        checkedInToday: resAtt.data.filter(r => r.status === 'Present' || r.status === 'Half-day').length,
-        pendingLeaves: pendingLeaves.length
+        totalEmployees: employees.length,
+        checkedInToday: todayChecks,
+        pendingLeaves: pendingLeavesCount
       });
 
-      setEmployeeList(resUsers.data);
-
-      // Generate Charts
-      // 1. Attendance status distribution
-      const presentCount = resAtt.data.filter(r => r.status === 'Present').length;
-      const halfDayCount = resAtt.data.filter(r => r.status === 'Half-day').length;
-      const leaveCount = resAtt.data.filter(r => r.status === 'Leave').length;
-      const absentCount = staff.length - (presentCount + halfDayCount + leaveCount);
-
-      setAttendanceChartData([
-        { name: 'Present', value: presentCount, color: '#10B981' },
-        { name: 'Half-Day', value: halfDayCount, color: '#F59E0B' },
-        { name: 'On Leave', value: leaveCount, color: '#6366F1' },
-        { name: 'Absent', value: Math.max(0, absentCount), color: '#EF4444' }
-      ]);
-
-      // 2. Leaves by Department / Month count
-      const leaveTypeCounts = { Paid: 0, Sick: 0, Unpaid: 0 };
-      resLeaves.data.forEach(l => {
-        if (leaveTypeCounts[l.leave_type] !== undefined) {
-          leaveTypeCounts[l.leave_type]++;
-        }
-      });
-      setLeaveChartData([
-        { type: 'Paid Leave', Count: leaveTypeCounts.Paid },
-        { type: 'Sick Leave', Count: leaveTypeCounts.Sick },
-        { type: 'Unpaid Leave', Count: leaveTypeCounts.Unpaid }
-      ]);
-
+      setEmployeeList(employees);
     } catch (error) {
-      console.error(error);
+      console.error('Error fetching admin dashboard:', error);
     } finally {
       setAdminLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (isHR) {
-      fetchAdminDashboard();
-    } else {
-      fetchEmployeeDashboard();
-    }
-  }, [isHR]);
+  const getDepartments = () => {
+    const depts = new Set(employeeList.map(e => e.jobDetails?.department).filter(Boolean));
+    return Array.from(depts);
+  };
 
   const filteredEmployees = employeeList.filter(emp => {
-    const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = 
+      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emp.email.toLowerCase().includes(searchQuery.toLowerCase());
+    
     const matchesDept = deptFilter ? emp.jobDetails?.department === deptFilter : true;
     return matchesSearch && matchesDept;
   });
 
-  const getDepartments = () => {
-    const depts = new Set(employeeList.map(emp => emp.jobDetails?.department).filter(Boolean));
-    return Array.from(depts);
-  };
+  // Recharts Department Distribution Data
+  const deptDataMap = {};
+  employeeList.forEach(emp => {
+    const dept = emp.jobDetails?.department || 'General';
+    deptDataMap[dept] = (deptDataMap[dept] || 0) + 1;
+  });
+  const deptChartData = Object.keys(deptDataMap).map(key => ({
+    name: key,
+    count: deptDataMap[key]
+  }));
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Present':
-        return <span className="px-2 py-0.5 rounded text-xxs font-semibold bg-emerald-500/10 text-emerald-400">Present</span>;
-      case 'Half-day':
-        return <span className="px-2 py-0.5 rounded text-xxs font-semibold bg-amber-500/10 text-amber-400">Half-day</span>;
-      case 'Leave':
-        return <span className="px-2 py-0.5 rounded text-xxs font-semibold bg-indigo-500/10 text-indigo-400">Leave</span>;
-      case 'Absent':
-        return <span className="px-2 py-0.5 rounded text-xxs font-semibold bg-rose-500/10 text-rose-400">Absent</span>;
-      default:
-        return <span className="px-2 py-0.5 rounded text-xxs font-semibold bg-slate-800 text-slate-400">{status}</span>;
-    }
-  };
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1'];
 
   return (
-    <div className="space-y-6">
-      
-      {/* Employee View Dashboard */}
-      {!isHR && (
-        <>
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex items-center space-x-4 shadow-lg">
-              <div className="rounded-lg bg-blue-600/10 p-3 text-blue-400">
-                <CalendarCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <span className="block text-xxs text-slate-400 font-semibold uppercase tracking-wider">Today's Status</span>
-                <span className="block text-lg font-bold text-white mt-1 capitalize">{empStats.todayStatus}</span>
-              </div>
-            </div>
+    <div className="space-y-8">
+      {/* Welcome Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900/80 to-blue-950/40 p-6 shadow-xl">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+            Welcome back, {user?.name}! 👋
+          </h2>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+            {isHR 
+              ? 'Here is your live workforce overview and HR control panel.' 
+              : 'Here is your daily attendance, leave balance, and workspace overview.'}
+          </p>
+        </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex items-center space-x-4 shadow-lg">
-              <div className="rounded-lg bg-amber-600/10 p-3 text-amber-400">
-                <Clock className="h-6 w-6" />
-              </div>
-              <div>
-                <span className="block text-xxs text-slate-400 font-semibold uppercase tracking-wider">Pending Leaves</span>
-                <span className="block text-lg font-bold text-white mt-1">{empStats.pendingLeaves} requests</span>
-              </div>
-            </div>
+        <div className="mt-4 sm:mt-0 flex items-center space-x-3">
+          <span className="text-xs text-slate-400 font-mono">
+            Emp ID: <strong className="text-white">{user?.employee_id}</strong>
+          </span>
+          <span className="h-4 w-px bg-slate-700"></span>
+          <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+            isHR ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+          }`}>
+            {user?.role} Portal
+          </span>
+        </div>
+      </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex items-center space-x-4 shadow-lg">
-              <div className="rounded-lg bg-emerald-600/10 p-3 text-emerald-400">
-                <DollarSign className="h-6 w-6" />
-              </div>
-              <div>
-                <span className="block text-xxs text-slate-400 font-semibold uppercase tracking-wider">Payslips Issued</span>
-                <span className="block text-lg font-bold text-white mt-1">{empStats.totalSlips} slips</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Quick Actions Panel */}
-            <div className="lg:col-span-1 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg space-y-4">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center pb-3 border-b border-slate-800">
-                <Sliders className="mr-2 h-4.5 w-4.5" />
-                Quick Actions
-              </h3>
-              
-              <div className="flex flex-col space-y-2">
-                <Link to="/profile" className="flex items-center justify-between p-3 rounded-lg bg-slate-950/30 hover:bg-slate-950/70 border border-slate-850 hover:border-slate-800 transition-all text-xs font-semibold text-white">
-                  <span>Update Profile Details</span>
-                  <ChevronRight className="h-4 w-4 text-slate-500" />
-                </Link>
-                <Link to="/attendance" className="flex items-center justify-between p-3 rounded-lg bg-slate-950/30 hover:bg-slate-950/70 border border-slate-850 hover:border-slate-800 transition-all text-xs font-semibold text-white">
-                  <span>Punch Work Attendance</span>
-                  <ChevronRight className="h-4 w-4 text-slate-500" />
-                </Link>
-                <Link to="/leaves" className="flex items-center justify-between p-3 rounded-lg bg-slate-950/30 hover:bg-slate-950/70 border border-slate-850 hover:border-slate-800 transition-all text-xs font-semibold text-white">
-                  <span>Apply for Time-Off</span>
-                  <ChevronRight className="h-4 w-4 text-slate-500" />
-                </Link>
-              </div>
-            </div>
-
-            {/* Recent Activity Log */}
-            <div className="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center pb-3 border-b border-slate-800">
-                <TrendingUp className="mr-2 h-4.5 w-4.5" />
-                Recent Activities
-              </h3>
-
-              <div className="space-y-4 text-xs font-normal">
-                {empLoading ? (
-                  <div className="flex justify-center items-center py-6">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500"></div>
-                  </div>
-                ) : recentActivities.length === 0 ? (
-                  <p className="text-slate-500 py-4 text-center">No recent activities logged.</p>
-                ) : (
-                  recentActivities.map((act, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-slate-950/30 border border-slate-850">
-                      <span className="text-slate-200">{act.title}</span>
-                      <span className={`px-2 py-0.5 rounded text-xxs font-semibold ${act.color}`}>{act.time}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* HR / Admin View Dashboard */}
-      {isHR && (
-        <>
-          {/* Quick Admin Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex items-center space-x-4 shadow-lg">
-              <div className="rounded-lg bg-blue-600/10 p-3 text-blue-400">
-                <Users className="h-6 w-6" />
-              </div>
-              <div>
-                <span className="block text-xxs text-slate-400 font-semibold uppercase tracking-wider">Total Staff</span>
-                <span className="block text-lg font-bold text-white mt-1">{adminStats.totalEmployees} Employees</span>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex items-center space-x-4 shadow-lg">
-              <div className="rounded-lg bg-emerald-600/10 p-3 text-emerald-400">
-                <CalendarCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <span className="block text-xxs text-slate-400 font-semibold uppercase tracking-wider">Active Today</span>
-                <span className="block text-lg font-bold text-white mt-1">{adminStats.checkedInToday} Check-ins</span>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 flex items-center space-x-4 shadow-lg">
-              <div className="rounded-lg bg-amber-600/10 p-3 text-amber-400">
-                <Clock className="h-6 w-6" />
-              </div>
-              <div>
-                <span className="block text-xxs text-slate-400 font-semibold uppercase tracking-wider">Time-Off Requests</span>
-                <span className="block text-lg font-bold text-white mt-1">{adminStats.pendingLeaves} Pending</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Pie Chart: Attendance Status today */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 border-b border-slate-800 pb-3">
-                Today's Attendance Status Distribution
-              </h3>
-              <div className="h-64 flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={attendanceChartData.filter(d => d.value > 0)}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {attendanceChartData.filter(d => d.value > 0).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', color: 'white', borderRadius: '8px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-
-                {/* Legends */}
-                <div className="ml-4 space-y-1.5 text-xs text-slate-400">
-                  {attendanceChartData.map((entry, idx) => (
-                    <div key={idx} className="flex items-center space-x-2">
-                      <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: entry.color }}></span>
-                      <span>{entry.name}: {entry.value}</span>
-                    </div>
-                  ))}
+      {!isHR ? (
+        /* ================= EMPLOYEE DASHBOARD ================= */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Quick Access Metric Cards */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Card 1: Today Attendance */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Status</span>
+                  <Clock className="h-5 w-5 text-blue-400" />
                 </div>
+                <p className="mt-3 text-2xl font-black text-white">{empStats.todayStatus}</p>
+                <Link to="/attendance" className="mt-4 flex items-center text-xs font-semibold text-blue-400 hover:text-blue-300">
+                  Clock In/Out &rarr;
+                </Link>
+              </div>
+
+              {/* Card 2: Pending Leaves */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Leaves</span>
+                  <CalendarCheck className="h-5 w-5 text-emerald-400" />
+                </div>
+                <p className="mt-3 text-2xl font-black text-white">{empStats.pendingLeaves} Pending</p>
+                <Link to="/leaves" className="mt-4 flex items-center text-xs font-semibold text-emerald-400 hover:text-emerald-300">
+                  Request Leave &rarr;
+                </Link>
+              </div>
+
+              {/* Card 3: Salary Slips */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Payslips</span>
+                  <DollarSign className="h-5 w-5 text-amber-400" />
+                </div>
+                <p className="mt-3 text-2xl font-black text-white">{empStats.totalSlips} Slips</p>
+                <Link to="/payroll" className="mt-4 flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300">
+                  Download PDF &rarr;
+                </Link>
               </div>
             </div>
 
-            {/* Bar Chart: Leave Applications trend */}
+            {/* Quick Action Navigation Grid */}
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 border-b border-slate-800 pb-3">
-                Cumulative Time-Off Request Categories
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4">Quick Navigation</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Link
+                  to="/attendance"
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-800 bg-slate-950/40 hover:bg-slate-850 hover:border-slate-700 transition-all group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 rounded-md bg-blue-500/10 text-blue-400">
+                      <Clock className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white group-hover:text-blue-400 transition-colors">Daily Attendance</h4>
+                      <p className="text-xxs text-slate-400">Check in, view working hours & logs</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-white transition-colors" />
+                </Link>
+
+                <Link
+                  to="/leaves"
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-800 bg-slate-950/40 hover:bg-slate-850 hover:border-slate-700 transition-all group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 rounded-md bg-emerald-500/10 text-emerald-400">
+                      <CalendarCheck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">Time-Off Requests</h4>
+                      <p className="text-xxs text-slate-400">Apply for paid, sick or unpaid leave</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-white transition-colors" />
+                </Link>
+
+                <Link
+                  to="/payroll"
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-800 bg-slate-950/40 hover:bg-slate-850 hover:border-slate-700 transition-all group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 rounded-md bg-amber-500/10 text-amber-400">
+                      <DollarSign className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white group-hover:text-amber-400 transition-colors">Salary & Payslips</h4>
+                      <p className="text-xxs text-slate-400">View breakdown & export PDF slips</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-white transition-colors" />
+                </Link>
+
+                <Link
+                  to="/profile"
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-800 bg-slate-950/40 hover:bg-slate-850 hover:border-slate-700 transition-all group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 rounded-md bg-purple-500/10 text-purple-400">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white group-hover:text-purple-400 transition-colors">My Profile</h4>
+                      <p className="text-xxs text-slate-400">Job details, documents & settings</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-white transition-colors" />
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Activity / Notification Feed */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4">Recent Alerts</h3>
+            {recentActivities.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-12">No recent notifications</p>
+            ) : (
+              <div className="space-y-3">
+                {recentActivities.map((act) => (
+                  <div key={act.id} className="rounded-lg bg-slate-950/40 border border-slate-850 p-3 text-xs">
+                    <p className="font-semibold text-white">{act.title}</p>
+                    <p className="mt-1 text-xxs text-slate-400 leading-relaxed">{act.message}</p>
+                    <span className="mt-2 block text-xxs text-slate-500">
+                      {new Date(act.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* ================= HR / ADMIN DASHBOARD ================= */
+        <>
+          {/* Top KPI Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Workforce</span>
+                <Users className="h-5 w-5 text-blue-400" />
+              </div>
+              <p className="mt-3 text-3xl font-black text-white">{adminStats.totalEmployees}</p>
+              <p className="mt-2 text-xxs text-slate-500 font-medium">Registered staff across all departments</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Present Today</span>
+                <Clock className="h-5 w-5 text-emerald-400" />
+              </div>
+              <p className="mt-3 text-3xl font-black text-emerald-400">{adminStats.checkedInToday}</p>
+              <p className="mt-2 text-xxs text-slate-500 font-medium">Active employee check-ins today</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Approvals</span>
+                <CalendarCheck className="h-5 w-5 text-amber-400" />
+              </div>
+              <p className="mt-3 text-3xl font-black text-amber-400">{adminStats.pendingLeaves}</p>
+              <Link to="/leaves" className="mt-2 inline-block text-xxs font-bold text-amber-400 hover:underline">
+                Review Queue &rarr;
+              </Link>
+            </div>
+          </div>
+
+          {/* Department Distribution Analytics */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4 flex items-center">
+                <TrendingUp className="mr-2 h-4 w-4 text-blue-400" />
+                Department Headcount Breakdown
               </h3>
-              <div className="h-64 text-slate-300">
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={leaveChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-                    <XAxis dataKey="type" stroke="#64748B" fontSize={10} />
-                    <YAxis stroke="#64748B" fontSize={10} allowDecimals={false} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', color: 'white', borderRadius: '8px' }} />
-                    <Bar dataKey="Count" fill="#3B82F6" radius={[4, 4, 0, 0]}>
-                      <Cell fill="#3B82F6" />
-                      <Cell fill="#10B981" />
-                      <Cell fill="#F59E0B" />
+                  <BarChart data={deptChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                    <XAxis dataKey="name" stroke="#64748B" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#64748B" fontSize={11} tickLine={false} allowDecimals={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                      itemStyle={{ color: '#60A5FA' }}
+                    />
+                    <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]}>
+                      {deptChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4 flex items-center">
+                <Sliders className="mr-2 h-4 w-4 text-emerald-400" />
+                Workforce Proportion by Department
+              </h3>
+              <div className="h-64 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={deptChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="count"
+                    >
+                      {deptChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
 
-          {/* Searchable Staff Roster */}
+          {/* Interactive Employee Card Grid (Odoo Specification Mockup) */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-800 mb-6 gap-4">
               <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center">
@@ -406,7 +417,7 @@ export const Dashboard = () => {
                     placeholder="Search by name/ID..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="rounded border border-slate-800 bg-slate-950/40 py-1.5 pl-8 pr-3 text-white focus:outline-none"
+                    className="rounded border border-slate-800 bg-slate-950/40 py-1.5 pl-8 pr-3 text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
@@ -414,7 +425,7 @@ export const Dashboard = () => {
                 <select
                   value={deptFilter}
                   onChange={(e) => setDeptFilter(e.target.value)}
-                  className="rounded border border-slate-800 bg-slate-950/40 py-1.5 px-3 text-white focus:outline-none"
+                  className="rounded border border-slate-800 bg-slate-950/40 py-1.5 px-3 text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="">All Departments</option>
                   {getDepartments().map((dept, idx) => (
@@ -472,7 +483,6 @@ export const Dashboard = () => {
           </div>
         </>
       )}
-
     </div>
   );
 };

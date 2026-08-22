@@ -1,28 +1,29 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const initAuth = async () => {
-      const token = localStorage.getItem('accessToken');
-      const savedUser = localStorage.getItem('user');
-
-      if (token && savedUser) {
+      const storedToken = localStorage.getItem('token');
+      if (storedToken) {
         try {
-          setUser(JSON.parse(savedUser));
-          // Validate session by fetching user profile
-          const res = await api.get('/users/profile');
+          const res = await api.get('/auth/me');
           setUser(res.data);
           localStorage.setItem('user', JSON.stringify(res.data));
+          fetchNotifications();
         } catch (error) {
-          console.error('Session validation failed:', error);
+          console.error('Session expired or invalid token:', error);
           logout();
         }
       }
@@ -32,83 +33,69 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, []);
 
-  // Fetch notifications
   const fetchNotifications = async () => {
-    if (!localStorage.getItem('accessToken')) return;
     try {
       const res = await api.get('/notifications');
-      setNotifications(res.data);
-      setUnreadCount(res.data.filter((n) => !n.is_read).length);
+      setNotifications(res.data.notifications || []);
+      setUnreadCount(res.data.unreadCount || 0);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
   };
 
-  useEffect(() => {
-    if (user) {
-      fetchNotifications();
-      // Poll notifications every 30 seconds
-      const interval = setInterval(fetchNotifications, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [user]);
-
   const login = (userData, accessToken, refreshToken) => {
-    localStorage.setItem('accessToken', accessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
+    setToken(accessToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('token', accessToken);
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
+    fetchNotifications();
   };
 
   const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
     setUser(null);
+    setToken(null);
     setNotifications([]);
     setUnreadCount(0);
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
   };
 
-  const markNotificationRead = async (id) => {
+  const markNotificationAsRead = async (id) => {
     try {
       await api.put(`/notifications/${id}/read`);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      fetchNotifications();
     } catch (error) {
-      console.error('Error marking notification read:', error);
+      console.error('Error marking notification as read:', error);
     }
   };
 
-  const markAllNotificationsRead = async () => {
-    try {
-      await api.put('/notifications/read-all');
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
-    } catch (error) {
-      console.error('Error marking all notifications read:', error);
-    }
+  const value = {
+    user,
+    token,
+    loading,
+    isAuthenticated: !!user,
+    isHR: user?.role === 'HR' || user?.role === 'Admin',
+    login,
+    logout,
+    notifications,
+    unreadCount,
+    fetchNotifications,
+    markNotificationAsRead
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        setUser,
-        login,
-        logout,
-        loading,
-        notifications,
-        unreadCount,
-        fetchNotifications,
-        markNotificationRead,
-        markAllNotificationsRead,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export default AuthContext;
