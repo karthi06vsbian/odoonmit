@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { User, JobDetails } = require('../models');
@@ -129,18 +130,25 @@ exports.verifyEmail = async (req, res) => {
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
-
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, username, password } = req.body;
+    const identifier = email || username;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Email or Employee ID and password are required' });
     }
 
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { email: identifier },
+          { employee_id: identifier }
+        ]
+      }
+    });
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: 'Invalid email/Employee ID or password' });
     }
 
     if (!user.is_verified) {
