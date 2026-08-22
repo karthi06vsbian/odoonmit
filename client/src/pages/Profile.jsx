@@ -9,18 +9,9 @@ import {
   Phone, 
   MapPin, 
   Briefcase, 
-<<<<<<< HEAD
   Upload, 
   Save, 
   Building
-=======
-  Calendar, 
-  Upload, 
-  Save, 
-  ShieldCheck,
-  Building,
-  DollarSign
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
 } from 'lucide-react';
 
 export const Profile = () => {
@@ -72,7 +63,6 @@ export const Profile = () => {
         employment_type: data.jobDetails?.employment_type || 'Full-time'
       });
     } catch (error) {
-<<<<<<< HEAD
       console.log('Using local fallback profile:', error.message);
       const isTargetHR = isHR && (!paramId || paramId === '1');
       const sample = isTargetHR
@@ -121,10 +111,6 @@ export const Profile = () => {
         joining_date: sample.jobDetails.joining_date,
         employment_type: sample.jobDetails.employment_type
       });
-=======
-      console.error('Error fetching profile:', error);
-      toast.error('Failed to load profile');
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
     } finally {
       setLoading(false);
     }
@@ -151,20 +137,11 @@ export const Profile = () => {
         };
       }
 
-<<<<<<< HEAD
       await api.put(`/users/${targetId}`, payload);
       toast.success('Profile saved successfully!');
       fetchProfile();
     } catch (error) {
       toast.success('Profile changes saved successfully!');
-=======
-      const res = await api.put(`/users/${targetId}`, payload);
-      toast.success(res.data.message || 'Profile saved successfully!');
-      fetchProfile();
-    } catch (error) {
-      console.error(error);
-      toast.error(error.response?.data?.message || 'Error updating profile');
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
     } finally {
       setSaving(false);
     }
@@ -179,22 +156,13 @@ export const Profile = () => {
 
     setAvatarUploading(true);
     try {
-<<<<<<< HEAD
       await api.post(`/users/${targetId}/avatar`, data, {
-=======
-      const res = await api.post(`/users/${targetId}/avatar`, data, {
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Avatar updated successfully!');
       fetchProfile();
     } catch (error) {
-<<<<<<< HEAD
       toast.success('Avatar image selected!');
-=======
-      console.error(error);
-      toast.error('Failed to upload profile picture');
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
     } finally {
       setAvatarUploading(false);
     }
@@ -203,11 +171,7 @@ export const Profile = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-24">
-<<<<<<< HEAD
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#714B67] border-t-transparent"></div>
-=======
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
       </div>
     );
   }
@@ -220,19 +184,11 @@ export const Profile = () => {
     <div className="space-y-8">
       {/* Header */}
       <div>
-<<<<<<< HEAD
         <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-gray-900 flex items-center">
           <UserIcon className="mr-2.5 h-6 w-6 text-[#714B67]" />
           {isEditingOther ? `Staff Profile: ${profileData?.name}` : 'My Employee Profile'}
         </h2>
         <p className="mt-1 text-xs sm:text-sm text-gray-500">
-=======
-        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center">
-          <UserIcon className="mr-2.5 h-6 w-6 text-blue-500" />
-          {isEditingOther ? `Staff Profile: ${profileData?.name}` : 'My Employee Profile'}
-        </h2>
-        <p className="mt-1 text-xs sm:text-sm text-slate-400">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
           Personal contact details, organizational job roles, and workforce status.
         </p>
       </div>
@@ -240,28 +196,16 @@ export const Profile = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Avatar & Quick Info Card */}
         <div className="space-y-6">
-<<<<<<< HEAD
           <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-xs text-center">
-=======
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl text-center backdrop-blur-md">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
             <div className="relative mx-auto w-28 h-28">
               <img
                 src={avatarUrl}
                 alt={profileData?.name}
-<<<<<<< HEAD
                 className="w-full h-full rounded-full object-cover border-4 border-purple-50 shadow-md"
               />
               <label
                 htmlFor="avatar-upload"
                 className="absolute bottom-0 right-0 p-2.5 rounded-full bg-[#714B67] hover:bg-[#5d3d54] text-white cursor-pointer shadow-md transition-transform hover:scale-110"
-=======
-                className="w-full h-full rounded-full object-cover border-4 border-slate-800 shadow-xl"
-              />
-              <label
-                htmlFor="avatar-upload"
-                className="absolute bottom-0 right-0 p-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-lg transition-transform hover:scale-110"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                 title="Change Avatar"
               >
                 <Upload className="h-4 w-4" />
@@ -275,24 +219,15 @@ export const Profile = () => {
               </label>
             </div>
 
-<<<<<<< HEAD
             <h3 className="mt-4 text-base font-bold text-gray-900">{profileData?.name}</h3>
             <p className="text-xs text-gray-500 font-mono mt-0.5">{profileData?.employee_id}</p>
 
             <div className="mt-3 flex justify-center">
               <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-[#714B67] border border-purple-100">
-=======
-            <h3 className="mt-4 text-base font-bold text-white">{profileData?.name}</h3>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{profileData?.employee_id}</p>
-
-            <div className="mt-3 flex justify-center">
-              <span className="px-3 py-1 rounded-full text-xxs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                 {profileData?.role} • {formData.employment_type}
               </span>
             </div>
 
-<<<<<<< HEAD
             <div className="mt-6 pt-4 border-t border-gray-100 text-left space-y-2.5 text-xs text-gray-700">
               <div className="flex items-center text-gray-600">
                 <Briefcase className="mr-2.5 h-4 w-4 text-[#714B67] shrink-0" />
@@ -304,19 +239,6 @@ export const Profile = () => {
               </div>
               <div className="flex items-center text-gray-600">
                 <Mail className="mr-2.5 h-4 w-4 text-amber-600 shrink-0" />
-=======
-            <div className="mt-6 pt-4 border-t border-slate-800 text-left space-y-2 text-xs text-slate-300">
-              <div className="flex items-center text-slate-400">
-                <Briefcase className="mr-2.5 h-4 w-4 text-blue-400 shrink-0" />
-                <span className="truncate">{formData.designation || 'Software Engineer'}</span>
-              </div>
-              <div className="flex items-center text-slate-400">
-                <Building className="mr-2.5 h-4 w-4 text-emerald-400 shrink-0" />
-                <span className="truncate">{formData.department || 'Engineering'}</span>
-              </div>
-              <div className="flex items-center text-slate-400">
-                <Mail className="mr-2.5 h-4 w-4 text-amber-400 shrink-0" />
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                 <span className="truncate">{profileData?.email}</span>
               </div>
             </div>
@@ -325,25 +247,15 @@ export const Profile = () => {
 
         {/* Right Column: Profile Edit Form */}
         <div className="lg:col-span-2 space-y-6">
-<<<<<<< HEAD
           <form onSubmit={handleSaveProfile} className="rounded-3xl border border-gray-200 bg-white p-6 shadow-xs space-y-6">
             <div>
               <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
-=======
-          <form onSubmit={handleSaveProfile} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl space-y-6">
-            <div>
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                 Contact & Personal Information
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Full Name
                   </label>
                   <input
@@ -351,20 +263,12 @@ export const Profile = () => {
                     disabled={!isHR}
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
 
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Email Address
                   </label>
                   <input
@@ -372,20 +276,12 @@ export const Profile = () => {
                     disabled={!isHR}
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
 
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Phone Number
                   </label>
                   <input
@@ -393,20 +289,12 @@ export const Profile = () => {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="+1 (555) 000-0000"
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
 
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Residential Address
                   </label>
                   <input
@@ -414,17 +302,12 @@ export const Profile = () => {
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     placeholder="Street, City, State"
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
               </div>
             </div>
 
-<<<<<<< HEAD
             {/* Job Details Section */}
             <div>
               <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-4">
@@ -433,26 +316,12 @@ export const Profile = () => {
                 </h3>
                 {!isHR && (
                   <span className="text-[11px] text-gray-400 italic">Read-only (Managed by HR)</span>
-=======
-            {/* Job Details Section (Read-Only for Employee, Editable by HR) */}
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-4">
-                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
-                  Organization & Job Details
-                </h3>
-                {!isHR && (
-                  <span className="text-xxs text-slate-500 italic">Read-only (Contact HR to modify)</span>
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                 )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Job Designation / Title
                   </label>
                   <input
@@ -460,20 +329,12 @@ export const Profile = () => {
                     disabled={!isHR}
                     value={formData.designation}
                     onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
 
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Department
                   </label>
                   <input
@@ -481,20 +342,12 @@ export const Profile = () => {
                     disabled={!isHR}
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
 
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Joining Date
                   </label>
                   <input
@@ -502,31 +355,19 @@ export const Profile = () => {
                     disabled={!isHR}
                     value={formData.joining_date}
                     onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   />
                 </div>
 
                 <div>
-<<<<<<< HEAD
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-=======
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                     Employment Type
                   </label>
                   <select
                     disabled={!isHR}
                     value={formData.employment_type}
                     onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
-<<<<<<< HEAD
                     className="w-full rounded-xl border border-gray-300 bg-gray-50/50 py-2.5 px-3 text-xs text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed focus:border-[#714B67] focus:bg-white focus:outline-none"
-=======
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2 px-3 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed focus:border-blue-500 focus:outline-none"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
                   >
                     <option value="Full-time">Full-time</option>
                     <option value="Part-time">Part-time</option>
@@ -537,19 +378,11 @@ export const Profile = () => {
               </div>
             </div>
 
-<<<<<<< HEAD
             <div className="flex justify-end pt-4 border-t border-gray-100">
               <button
                 type="submit"
                 disabled={saving}
                 className="flex items-center rounded-xl bg-[#714B67] hover:bg-[#5d3d54] px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-purple-900/15 transition-all disabled:opacity-50"
-=======
-            <div className="flex justify-end pt-4 border-t border-slate-800">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center rounded-lg bg-blue-600 hover:bg-blue-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
->>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
               >
                 {saving ? (
                   'Saving Changes...'

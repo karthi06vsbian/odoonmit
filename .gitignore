@@ -33,3 +33,6 @@ server/uploads/
 *.swp
 *.swo
 .oxlintrc.json
+
+odooXNmit_Portal.zip
+*.zip
