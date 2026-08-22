@@ -33,9 +33,15 @@ app.use('/api/leave', leaveRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// Simple root check
-app.get('/', (req, res) => {
-  res.json({ message: 'Dayflow HRMS Server is running.' });
+// Serve static files from the React client build
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// Serve React app for all non-API routes
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
 // Database Synchronization and Server Startup
