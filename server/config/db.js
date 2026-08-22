@@ -3,7 +3,8 @@ require('dotenv').config();
 
 let sequelize;
 
-const dbUri = process.env.DB_URI || process.env.DATABASE_URL;
+const rawUri = process.env.DB_URI || process.env.DATABASE_URL;
+const dbUri = rawUri ? rawUri.split('?')[0] : null;
 
 if (dbUri || process.env.DB_DIALECT === 'mysql') {
   if (dbUri) {
