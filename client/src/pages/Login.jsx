@@ -44,6 +44,25 @@ export const Login = () => {
     }
   };
 
+  const handleQuickLogin = async (demoEmail, demoPassword) => {
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/login', { email: demoEmail, password: demoPassword });
+      const { accessToken, refreshToken, user } = res.data;
+      login(user, accessToken, refreshToken);
+      toast.success(`Logged in as ${user.name}!`);
+      navigate('/');
+    } catch (error) {
+      console.error(error);
+      const data = error.response?.data;
+      toast.error(data?.message || 'Login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleOtpVerifySubmit = async (e) => {
     e.preventDefault();
     if (!otp) return toast.error('Please enter the OTP verification code');
@@ -128,6 +147,31 @@ export const Login = () => {
                 </>
               )}
             </button>
+
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-slate-800/80"></div>
+              <span className="flex-shrink mx-3 text-slate-500 text-xxs font-bold uppercase tracking-wider">Demo Quick Login</span>
+              <div className="flex-grow border-t border-slate-800/80"></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('hr@dayflow.com', 'Password@123')}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-800 bg-slate-950/40 hover:bg-slate-900/60 hover:border-slate-700 transition-all text-left"
+              >
+                <span className="text-xxs font-bold text-blue-400">HR Admin</span>
+                <span className="text-xxs text-slate-400 font-normal mt-0.5">Jane Doe</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('employee@dayflow.com', 'Password@123')}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-800 bg-slate-950/40 hover:bg-slate-900/60 hover:border-slate-700 transition-all text-left"
+              >
+                <span className="text-xxs font-bold text-emerald-400">Employee</span>
+                <span className="text-xxs text-slate-400 font-normal mt-0.5">John Doe</span>
+              </button>
+            </div>
 
             <div className="text-center mt-4">
               <span className="text-xs text-slate-400">
