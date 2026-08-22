@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && !window.location.origin.includes('localhost') ? '/api' : 'http://localhost:5001/api');
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 import axios from 'axios';
 
 const api = axios.create({
