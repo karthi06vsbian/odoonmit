@@ -22,6 +22,30 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Database Initialization (runs before any route handlers)
+let dbInitialized = false;
+const initDB = async () => {
+  if (dbInitialized) return;
+  try {
+    await connectDB();
+    await sequelize.sync({ force: false });
+    await seedDatabase();
+    dbInitialized = true;
+    console.log('Database initialized and synced successfully.');
+  } catch (error) {
+    console.error('Database initialization error:', error);
+  }
+};
+
+// Start initialization on module load
+initDB().catch(console.error);
+
+// Middleware to ensure DB connection is ready before handling ANY request
+app.use(async (req, res, next) => {
+  await initDB();
+  next();
+});
+
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -42,27 +66,6 @@ app.get('*', (req, res, next) => {
     return next();
   }
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-});
-
-// Database Lazy Initialization
-let dbInitialized = false;
-const initDB = async () => {
-  if (dbInitialized) return;
-  try {
-    await connectDB();
-    await sequelize.sync({ force: false });
-    await seedDatabase();
-    dbInitialized = true;
-    console.log('Database initialized and synced successfully.');
-  } catch (error) {
-    console.error('Database initialization error:', error);
-  }
-};
-
-// Middleware to ensure DB connection is ready for each request
-app.use(async (req, res, next) => {
-  await initDB();
-  next();
 });
 
 // Start Express listener only if not running on Vercel
