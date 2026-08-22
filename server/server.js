@@ -44,26 +44,32 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
-// Database Synchronization and Server Startup
-const startServer = async () => {
-  // Connect to Database
-  await connectDB();
-
-  // Sync Database Schema (create tables if they don't exist)
+// Database Lazy Initialization
+let dbInitialized = false;
+const initDB = async () => {
+  if (dbInitialized) return;
   try {
-    await sequelize.sync({ force: false }); // Set to true only if you want to reset DB
-    console.log('Database tables synchronized successfully.');
-    
-    // Seed database with initial users
+    await connectDB();
+    await sequelize.sync({ force: false });
     await seedDatabase();
+    dbInitialized = true;
+    console.log('Database initialized and synced successfully.');
   } catch (error) {
-    console.error('Database synchronization error:', error);
+    console.error('Database initialization error:', error);
   }
+};
 
-  // Start Express listener
+// Middleware to ensure DB connection is ready for each request
+app.use(async (req, res, next) => {
+  await initDB();
+  next();
+});
+
+// Start Express listener only if not running on Vercel
+if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode.`);
   });
-};
+}
 
-startServer();
+module.exports = app;
