@@ -28,10 +28,12 @@ if (process.env.DB_DIALECT === 'mysql') {
     }
   );
 } else {
-  // Fallback/Default to SQLite
+  // Fallback/Default to SQLite (handles writable /tmp directory on Vercel serverless)
+  const isVercel = !!process.env.VERCEL;
+  const sqliteStorage = process.env.DB_STORAGE || (isVercel ? '/tmp/dayflow.sqlite' : './dayflow.sqlite');
   sequelize = new Sequelize({
     dialect: 'sqlite',
-    storage: process.env.DB_STORAGE || './dayflow.sqlite',
+    storage: sqliteStorage,
     logging: false
   });
 }
