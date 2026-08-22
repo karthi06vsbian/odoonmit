@@ -15,6 +15,7 @@ import Payroll from './pages/Payroll';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
+<<<<<<< HEAD
 // Main Layout Wrapper - Clean Odoo White & Purple aesthetic
 const MainLayout = () => {
   return (
@@ -23,6 +24,16 @@ const MainLayout = () => {
       <div className="pl-64 min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1 p-8 mt-16 overflow-y-auto bg-[#F8F9FA]">
+=======
+// Main Layout Wrapper
+const MainLayout = () => {
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <Sidebar />
+      <div className="pl-64 min-h-screen flex flex-col">
+        <Navbar />
+        <main className="flex-1 p-8 mt-16 overflow-y-auto">
+>>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/profile" element={<Profile />} />
@@ -63,7 +74,11 @@ function App() {
         pauseOnFocusLoss
         draggable
         pauseOnHover
+<<<<<<< HEAD
         theme="colored"
+=======
+        theme="dark"
+>>>>>>> 7b30cc86e73e78e1af2bdfe633af9c41bf0273cf
       />
     </AuthProvider>
   );
